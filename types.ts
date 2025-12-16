@@ -13,6 +13,7 @@ export interface Company {
   address: string; // Dirección Fiscal
   retentionPercentage: 75 | 100; // Porcentaje de retención por defecto
   logoUrl?: string; // URL del logo de la empresa
+  lastCorrelationNumber?: number; // Último número de comprobante generado
 }
 
 export interface Supplier {
@@ -53,5 +54,6 @@ export enum AppRoute {
   DASHBOARD = 'dashboard',
   CREATE_COMPANY = 'create_company',
   CREATE_RETENTION = 'create_retention',
-  VIEW_RETENTION = 'view_retention'
+  VIEW_RETENTION = 'view_retention',
+  HISTORY = 'history'
 }

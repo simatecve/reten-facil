@@ -1,7 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { chatWithGemini } from '../lib/gemini';
+import { Company, RetentionVoucher, UserProfile } from '../types';
 
-const ChatBot: React.FC = () => {
+interface ChatBotProps {
+  userProfile: UserProfile | null;
+  companies: Company[];
+  recentVouchers: RetentionVoucher[];
+}
+
+const ChatBot: React.FC<ChatBotProps> = ({ userProfile, companies, recentVouchers }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; content: string }[]>([
     { role: 'model', content: 'Hola, soy tu asistente de RetenFácil. ¿En qué puedo ayudarte con tus retenciones o impuestos hoy?' }
@@ -16,7 +23,27 @@ const ChatBot: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isOpen]);
+
+  // Construct context string from props
+  const getSystemContext = () => {
+    if (!userProfile) return "Usuario no identificado.";
+
+    const companyList = companies.map(c => `- ${c.name} (${c.rif}) - Retención: ${c.retentionPercentage}%`).join('\n');
+    const voucherList = recentVouchers.slice(0, 5).map(v => 
+      `- Comprobante: ${v.voucherNumber}, Fecha: ${v.date}, Prov: ${v.supplier.name}, Monto Retenido: ${(v.items || []).reduce((acc, i) => acc + i.retentionAmount, 0).toFixed(2)}`
+    ).join('\n');
+
+    return `
+      Usuario: ${userProfile.first_name} ${userProfile.last_name || ''}
+      
+      Empresas Registradas (Agentes):
+      ${companyList || 'Ninguna registrada'}
+
+      Últimas 5 Retenciones Generadas:
+      ${voucherList || 'Ninguna generada'}
+    `;
+  };
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -27,7 +54,8 @@ const ChatBot: React.FC = () => {
     setMessages(newHistory);
     setIsLoading(true);
 
-    const response = await chatWithGemini(newHistory, userMsg);
+    const context = getSystemContext();
+    const response = await chatWithGemini(newHistory, userMsg, context);
     
     setMessages(prev => [...prev, { role: 'model', content: response || "Error." }]);
     setIsLoading(false);
@@ -40,16 +68,16 @@ const ChatBot: React.FC = () => {
         className="fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition-all z-50 flex items-center gap-2"
       >
         <span className="material-icons">voice_chat</span>
-        <span className="font-bold">Asistente IA</span>
+        <span className="font-bold hidden md:inline">Asistente IA</span>
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white rounded-xl shadow-2xl z-50 flex flex-col border border-gray-200 overflow-hidden font-sans">
+    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white rounded-xl shadow-2xl z-50 flex flex-col border border-gray-200 overflow-hidden font-sans animate-fade-in-up">
       <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
         <h3 className="font-bold flex items-center gap-2">
-            <span className="material-icons text-sm">spark</span>
+            <span className="material-icons text-sm">auto_awesome</span>
             RetenFácil AI
         </h3>
         <button onClick={() => setIsOpen(false)} className="hover:text-gray-200">
@@ -87,7 +115,7 @@ const ChatBot: React.FC = () => {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Escribe tu duda..."
+          placeholder="Pregunta sobre tus empresas o retenciones..."
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button 
