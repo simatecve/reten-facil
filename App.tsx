@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 import { User } from '@supabase/supabase-js';
 import LandingPage from './components/LandingPage';
@@ -198,6 +198,38 @@ const App: React.FC = () => {
   useEffect(() => {
     if (userProfile) loadData();
   }, [userProfile]);
+
+  // Dashboard Stats Calculations
+  const dashboardStats = useMemo(() => {
+    const totalRetained = generatedVouchers.reduce((acc, v) => {
+      const itemsRetained = (v.items || []).reduce((sum, item) => sum + item.retentionAmount, 0);
+      return acc + itemsRetained;
+    }, 0);
+
+    const companyDistribution = companies.map(c => {
+      const count = generatedVouchers.filter(v => v.company.id === c.id).length;
+      return { name: c.name, count };
+    }).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    const monthlyTrend = Array.from({ length: 6 }).map((_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (5 - i));
+      const monthName = d.toLocaleString('es-ES', { month: 'short' });
+      const yearMonth = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
+      
+      const count = generatedVouchers.filter(v => {
+        const vDate = new Date(v.date);
+        const vYM = `${vDate.getFullYear()}${String(vDate.getMonth() + 1).padStart(2, '0')}`;
+        return vYM === yearMonth;
+      }).length;
+
+      return { label: monthName, value: count };
+    });
+
+    const maxMonthly = Math.max(...monthlyTrend.map(t => t.value), 1);
+
+    return { totalRetained, companyDistribution, monthlyTrend, maxMonthly };
+  }, [generatedVouchers, companies]);
 
   // Lógica de cálculo de facturas
   const calculateInvoice = (total: number, exempt: number = 0, taxRate: number = 16) => {
@@ -468,9 +500,20 @@ const App: React.FC = () => {
         {/* DASHBOARD */}
         {route === AppRoute.DASHBOARD && userProfile?.role === 'admin' && (
           <div className="max-w-6xl mx-auto space-y-10 animate-fade-in">
-            <header>
-              <h1 className="text-4xl font-black tracking-tight">Bienvenido, {userProfile.first_name}</h1>
-              <p className="text-slate-500 mt-2 font-medium">Resumen general de tu plataforma SaaS.</p>
+            <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <h1 className="text-4xl font-black tracking-tight">Bienvenido, {userProfile.first_name}</h1>
+                <p className="text-slate-500 mt-2 font-medium">Resumen general de tu plataforma SaaS.</p>
+              </div>
+              <div className="bg-white px-6 py-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+                 <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                    <span className="material-icons text-xl">account_balance_wallet</span>
+                 </div>
+                 <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Retenido</p>
+                    <p className="font-black text-slate-900">{dashboardStats.totalRetained.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</p>
+                 </div>
+              </div>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -496,20 +539,85 @@ const App: React.FC = () => {
                   <h3 className="text-4xl font-black mt-1">{subUsers.length}</h3>
                </div>
             </div>
-            
-            <div className="bg-white p-8 rounded-[2rem] border border-slate-100">
-               <h3 className="font-black text-xl mb-6">Actividad Reciente</h3>
-               <div className="space-y-4">
-                  {generatedVouchers.slice(0, 3).map(v => (
-                    <div key={v.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                       <div className="flex items-center gap-4">
-                          <span className="material-icons text-blue-600">history</span>
-                          <div>
-                             <p className="font-bold">{v.supplier.name}</p>
-                             <p className="text-xs text-slate-400">Comprobante {v.voucherNumber}</p>
+
+            {/* GRÁFICOS Y ESTADÍSTICAS ADICIONALES */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               {/* Tendencia Mensual */}
+               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
+                  <h3 className="font-black text-xl mb-8 flex items-center gap-2">
+                    <span className="material-icons text-blue-600">trending_up</span>
+                    Tendencia de Emisión
+                  </h3>
+                  <div className="flex-1 flex items-end justify-between gap-2 h-48 px-2">
+                    {dashboardStats.monthlyTrend.map((t, idx) => (
+                      <div key={idx} className="flex-1 flex flex-col items-center group">
+                        <div className="w-full relative flex flex-col justify-end h-full">
+                           {/* Tooltip on hover */}
+                           <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                              {t.value} comprobantes
+                           </div>
+                           <div 
+                              className="w-full bg-blue-100 group-hover:bg-blue-600 rounded-t-xl transition-all duration-500 ease-out" 
+                              style={{ height: `${(t.value / dashboardStats.maxMonthly) * 100}%`, minHeight: '4px' }}
+                           ></div>
+                        </div>
+                        <p className="text-[10px] font-bold text-slate-400 mt-4 uppercase tracking-tighter">{t.label}</p>
+                      </div>
+                    ))}
+                  </div>
+               </div>
+
+               {/* Distribución por Empresa */}
+               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                  <h3 className="font-black text-xl mb-8 flex items-center gap-2">
+                    <span className="material-icons text-indigo-600">pie_chart</span>
+                    Actividad por Empresa
+                  </h3>
+                  <div className="space-y-6">
+                     {dashboardStats.companyDistribution.map((item, idx) => (
+                       <div key={idx} className="space-y-2">
+                          <div className="flex justify-between text-xs font-bold">
+                             <span className="text-slate-700 truncate max-w-[70%]">{item.name}</span>
+                             <span className="text-slate-400">{item.count} comprobantes</span>
+                          </div>
+                          <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden">
+                             <div 
+                                className="h-full bg-indigo-500 rounded-full transition-all duration-700" 
+                                style={{ width: `${(item.count / (generatedVouchers.length || 1)) * 100}%` }}
+                             ></div>
                           </div>
                        </div>
-                       <span className="font-black text-slate-900">{v.date}</span>
+                     ))}
+                     {dashboardStats.companyDistribution.length === 0 && (
+                        <div className="h-40 flex items-center justify-center text-slate-300 italic text-sm">
+                           Sin datos suficientes
+                        </div>
+                     )}
+                  </div>
+               </div>
+            </div>
+            
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100">
+               <h3 className="font-black text-xl mb-6 flex items-center gap-2">
+                  <span className="material-icons text-amber-500">history</span>
+                  Actividad Reciente
+               </h3>
+               <div className="space-y-4">
+                  {generatedVouchers.slice(0, 5).map(v => (
+                    <div key={v.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100">
+                       <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-600 shadow-sm">
+                             <span className="material-icons text-xl">receipt</span>
+                          </div>
+                          <div>
+                             <p className="font-bold text-slate-800">{v.supplier.name}</p>
+                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Comp: {v.voucherNumber} • {v.company.name}</p>
+                          </div>
+                       </div>
+                       <div className="text-right">
+                          <p className="font-black text-slate-900 text-sm">{(v.items || []).reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">{v.date}</p>
+                       </div>
                     </div>
                   ))}
                   {generatedVouchers.length === 0 && (
