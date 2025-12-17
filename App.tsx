@@ -40,7 +40,7 @@ const Sidebar = ({
   ].filter(item => item.show);
 
   return (
-    <div className={`${isCollapsed ? 'w-20' : 'w-72'} bg-[#0f172a] text-white flex flex-col h-screen fixed left-0 top-0 overflow-y-auto print:hidden z-30 transition-all duration-300 shadow-2xl border-r border-slate-800`}>
+    <div className={`hidden md:flex ${isCollapsed ? 'w-20' : 'w-72'} bg-[#0f172a] text-white flex-col h-screen fixed left-0 top-0 overflow-y-auto print:hidden z-30 transition-all duration-300 shadow-2xl border-r border-slate-800`}>
       <div className={`p-8 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
         {!isCollapsed && (
           <div className="animate-fade-in">
@@ -66,7 +66,7 @@ const Sidebar = ({
           </button>
         ))}
         
-        {/* Profile Button */}
+        {/* Profile Button Desktop */}
         <button 
           onClick={() => { resetStates(); setRoute(AppRoute.PROFILE); }}
           className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all group ${currentRoute === AppRoute.PROFILE ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'} ${isCollapsed ? 'justify-center' : ''}`}
@@ -93,6 +93,52 @@ const Sidebar = ({
           <span className="material-icons">logout</span>
           {!isCollapsed && <span>Cerrar Sesión</span>}
         </button>
+      </div>
+    </div>
+  );
+};
+
+const MobileBottomNav = ({ currentRoute, setRoute, resetStates, role }: any) => {
+  const isAdmin = role === 'admin';
+  const tabs = [
+    { route: AppRoute.DASHBOARD, icon: 'grid_view', label: 'Inicio', show: isAdmin },
+    { route: AppRoute.HISTORY, icon: 'history', label: 'Historial', show: true },
+    { route: AppRoute.CREATE_RETENTION, icon: 'add_circle', label: 'Nueva', show: true, special: true },
+    { route: AppRoute.USER_MANAGEMENT, icon: 'group', label: 'Equipo', show: isAdmin },
+    { route: AppRoute.PROFILE, icon: 'person', label: 'Perfil', show: true },
+  ].filter(t => t.show);
+
+  return (
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 flex items-center justify-around px-2 py-3 z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] print:hidden">
+      {tabs.map((tab) => (
+        <button
+          key={tab.route}
+          onClick={() => { resetStates(); setRoute(tab.route); }}
+          className={`flex flex-col items-center gap-1 min-w-[64px] transition-all ${
+            tab.special 
+            ? 'bg-blue-600 text-white p-3 rounded-full -mt-10 shadow-lg shadow-blue-300' 
+            : currentRoute === tab.route ? 'text-blue-600 scale-110' : 'text-slate-400'
+          }`}
+        >
+          <span className="material-icons text-2xl">{tab.icon}</span>
+          {!tab.special && <span className="text-[10px] font-bold uppercase tracking-tight">{tab.label}</span>}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const MobileHeader = ({ title, userProfile }: any) => {
+  return (
+    <div className="md:hidden sticky top-0 left-0 right-0 bg-white/80 backdrop-blur-md border-b border-slate-100 p-4 z-40 flex justify-between items-center print:hidden">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+          <span className="text-white font-black text-xs">R</span>
+        </div>
+        <h1 className="font-black text-slate-800 text-lg tracking-tight uppercase">{title}</h1>
+      </div>
+      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+        <span className="material-icons text-xl">notifications_none</span>
       </div>
     </div>
   );
@@ -474,6 +520,18 @@ const App: React.FC = () => {
     }
   };
 
+  const getPageTitle = (r: AppRoute) => {
+    switch(r) {
+      case AppRoute.DASHBOARD: return 'Dashboard';
+      case AppRoute.CREATE_RETENTION: return 'Nueva Retención';
+      case AppRoute.HISTORY: return 'Historial';
+      case AppRoute.USER_MANAGEMENT: return 'Mi Equipo';
+      case AppRoute.PROFILE: return 'Perfil';
+      case AppRoute.CREATE_COMPANY: return 'Empresas';
+      default: return 'RetenFácil';
+    }
+  }
+
   if (loading) return (
     <div className="h-screen bg-slate-950 flex flex-col items-center justify-center">
        <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
@@ -484,7 +542,13 @@ const App: React.FC = () => {
   if (!user || route === AppRoute.LANDING) return <LandingPage />;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
+      
+      {/* Mobile Components */}
+      <MobileHeader title={getPageTitle(route)} userProfile={userProfile} />
+      <MobileBottomNav currentRoute={route} setRoute={setRoute} resetStates={resetStates} role={userProfile?.role} />
+
+      {/* Desktop Sidebar */}
       <Sidebar 
         currentRoute={route} setRoute={setRoute} 
         handleLogout={() => supabase.auth.signOut()} 
@@ -495,12 +559,12 @@ const App: React.FC = () => {
         userProfile={userProfile}
       />
       
-      <main className={`flex-1 ${isSidebarCollapsed ? 'ml-20' : 'ml-72'} p-8 transition-all duration-300`}>
+      <main className={`flex-1 transition-all duration-300 pb-24 md:pb-8 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} p-4 md:p-8`}>
         
         {/* DASHBOARD */}
         {route === AppRoute.DASHBOARD && userProfile?.role === 'admin' && (
-          <div className="max-w-6xl mx-auto space-y-10 animate-fade-in">
-            <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="max-w-6xl mx-auto space-y-6 md:space-y-10 animate-fade-in">
+            <header className="hidden md:flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
                 <h1 className="text-4xl font-black tracking-tight">Bienvenido, {userProfile.first_name}</h1>
                 <p className="text-slate-500 mt-2 font-medium">Resumen general de tu plataforma SaaS.</p>
@@ -516,7 +580,27 @@ const App: React.FC = () => {
               </div>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Mobile Stats Top Bar */}
+            <div className="md:hidden bg-blue-600 p-6 rounded-[2rem] text-white shadow-xl shadow-blue-200">
+               <p className="text-xs font-bold opacity-80 uppercase tracking-widest">Total Retenido Global</p>
+               <h3 className="text-3xl font-black mt-1">{dashboardStats.totalRetained.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</h3>
+               <div className="mt-4 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                  <div className="bg-white/10 px-4 py-2 rounded-2xl whitespace-nowrap">
+                    <span className="text-[10px] font-bold block opacity-60">Empresas</span>
+                    <span className="font-bold">{companies.length}</span>
+                  </div>
+                  <div className="bg-white/10 px-4 py-2 rounded-2xl whitespace-nowrap">
+                    <span className="text-[10px] font-bold block opacity-60">Comprobantes</span>
+                    <span className="font-bold">{generatedVouchers.length}</span>
+                  </div>
+                  <div className="bg-white/10 px-4 py-2 rounded-2xl whitespace-nowrap">
+                    <span className="text-[10px] font-bold block opacity-60">Equipo</span>
+                    <span className="font-bold">{subUsers.length}</span>
+                  </div>
+               </div>
+            </div>
+
+            <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-8">
                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 group hover:shadow-xl transition-all">
                   <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                     <span className="material-icons">business</span>
@@ -541,46 +625,45 @@ const App: React.FC = () => {
             </div>
 
             {/* GRÁFICOS Y ESTADÍSTICAS ADICIONALES */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                {/* Tendencia Mensual */}
-               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
-                  <h3 className="font-black text-xl mb-8 flex items-center gap-2">
+               <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
+                  <h3 className="font-black text-lg md:text-xl mb-6 md:mb-8 flex items-center gap-2">
                     <span className="material-icons text-blue-600">trending_up</span>
                     Tendencia de Emisión
                   </h3>
-                  <div className="flex-1 flex items-end justify-between gap-2 h-48 px-2">
+                  <div className="flex-1 flex items-end justify-between gap-2 h-40 md:h-48 px-1 md:px-2">
                     {dashboardStats.monthlyTrend.map((t, idx) => (
                       <div key={idx} className="flex-1 flex flex-col items-center group">
                         <div className="w-full relative flex flex-col justify-end h-full">
-                           {/* Tooltip on hover */}
                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                               {t.value} comprobantes
                            </div>
                            <div 
-                              className="w-full bg-blue-100 group-hover:bg-blue-600 rounded-t-xl transition-all duration-500 ease-out" 
+                              className="w-full bg-blue-100 group-hover:bg-blue-600 rounded-t-lg md:rounded-t-xl transition-all duration-500 ease-out" 
                               style={{ height: `${(t.value / dashboardStats.maxMonthly) * 100}%`, minHeight: '4px' }}
                            ></div>
                         </div>
-                        <p className="text-[10px] font-bold text-slate-400 mt-4 uppercase tracking-tighter">{t.label}</p>
+                        <p className="text-[8px] md:text-[10px] font-bold text-slate-400 mt-3 md:mt-4 uppercase tracking-tighter">{t.label}</p>
                       </div>
                     ))}
                   </div>
                </div>
 
                {/* Distribución por Empresa */}
-               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                  <h3 className="font-black text-xl mb-8 flex items-center gap-2">
+               <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-sm">
+                  <h3 className="font-black text-lg md:text-xl mb-6 md:mb-8 flex items-center gap-2">
                     <span className="material-icons text-indigo-600">pie_chart</span>
                     Actividad por Empresa
                   </h3>
-                  <div className="space-y-6">
+                  <div className="space-y-4 md:space-y-6">
                      {dashboardStats.companyDistribution.map((item, idx) => (
-                       <div key={idx} className="space-y-2">
-                          <div className="flex justify-between text-xs font-bold">
+                       <div key={idx} className="space-y-1.5 md:space-y-2">
+                          <div className="flex justify-between text-[10px] md:text-xs font-bold">
                              <span className="text-slate-700 truncate max-w-[70%]">{item.name}</span>
-                             <span className="text-slate-400">{item.count} comprobantes</span>
+                             <span className="text-slate-400">{item.count}</span>
                           </div>
-                          <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden">
+                          <div className="h-1.5 md:h-2 w-full bg-slate-50 rounded-full overflow-hidden">
                              <div 
                                 className="h-full bg-indigo-500 rounded-full transition-all duration-700" 
                                 style={{ width: `${(item.count / (generatedVouchers.length || 1)) * 100}%` }}
@@ -589,7 +672,7 @@ const App: React.FC = () => {
                        </div>
                      ))}
                      {dashboardStats.companyDistribution.length === 0 && (
-                        <div className="h-40 flex items-center justify-center text-slate-300 italic text-sm">
+                        <div className="h-32 md:h-40 flex items-center justify-center text-slate-300 italic text-sm">
                            Sin datos suficientes
                         </div>
                      )}
@@ -597,26 +680,26 @@ const App: React.FC = () => {
                </div>
             </div>
             
-            <div className="bg-white p-8 rounded-[2rem] border border-slate-100">
-               <h3 className="font-black text-xl mb-6 flex items-center gap-2">
+            <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100">
+               <h3 className="font-black text-lg md:text-xl mb-4 md:mb-6 flex items-center gap-2">
                   <span className="material-icons text-amber-500">history</span>
                   Actividad Reciente
                </h3>
-               <div className="space-y-4">
+               <div className="space-y-3 md:space-y-4">
                   {generatedVouchers.slice(0, 5).map(v => (
-                    <div key={v.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100">
-                       <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-600 shadow-sm">
-                             <span className="material-icons text-xl">receipt</span>
+                    <div key={v.id} className="flex items-center justify-between p-3 md:p-4 bg-slate-50 rounded-2xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100">
+                       <div className="flex items-center gap-3 md:gap-4">
+                          <div className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-lg md:rounded-xl flex items-center justify-center text-blue-600 shadow-sm">
+                             <span className="material-icons text-lg md:text-xl">receipt</span>
                           </div>
                           <div>
-                             <p className="font-bold text-slate-800">{v.supplier.name}</p>
-                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Comp: {v.voucherNumber} • {v.company.name}</p>
+                             <p className="font-bold text-slate-800 text-xs md:text-base truncate max-w-[120px] md:max-w-none">{v.supplier.name}</p>
+                             <p className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">Comp: {v.voucherNumber.substring(0, 8)}...</p>
                           </div>
                        </div>
                        <div className="text-right">
-                          <p className="font-black text-slate-900 text-sm">{(v.items || []).reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">{v.date}</p>
+                          <p className="font-black text-slate-900 text-xs md:text-sm">{(v.items || []).reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</p>
+                          <p className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase">{v.date}</p>
                        </div>
                     </div>
                   ))}
@@ -630,23 +713,23 @@ const App: React.FC = () => {
 
         {/* GESTIÓN DE EMPRESAS */}
         {route === AppRoute.CREATE_COMPANY && userProfile?.role === 'admin' && (
-          <div className="max-w-6xl mx-auto space-y-12 animate-fade-in">
-            <header>
+          <div className="max-w-6xl mx-auto space-y-8 md:space-y-12 animate-fade-in">
+            <header className="hidden md:block">
               <h2 className="text-3xl font-black tracking-tight">Gestión de Empresas</h2>
               <p className="text-slate-500 mt-2">Agrega y administra las entidades bajo tu control administrativo.</p>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-10">
               <div className="lg:col-span-1">
-                <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 sticky top-8">
+                <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-xl border border-slate-100 md:sticky md:top-8">
                   <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
                     <span className="material-icons text-blue-600">{editingCompany ? 'edit' : 'add_business'}</span>
                     {editingCompany ? 'Editar Empresa' : 'Nueva Empresa'}
                   </h3>
                   <form onSubmit={handleCreateCompany} className="space-y-4">
-                    <input required name="name" defaultValue={editingCompany?.name} placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl" />
-                    <input required name="rif" defaultValue={editingCompany?.rif} placeholder="RIF (J-00000000-0)" className="w-full bg-slate-50 border-none p-4 rounded-2xl" />
-                    <textarea required name="address" defaultValue={editingCompany?.address} placeholder="Dirección Fiscal" className="w-full bg-slate-50 border-none p-4 rounded-2xl h-24" />
+                    <input required name="name" defaultValue={editingCompany?.name} placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input required name="rif" defaultValue={editingCompany?.rif} placeholder="RIF (J-00000000-0)" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <textarea required name="address" defaultValue={editingCompany?.address} placeholder="Dirección Fiscal" className="w-full bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none" />
                     <div className="grid grid-cols-2 gap-4">
                        <div>
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tasa IVA</label>
@@ -657,7 +740,7 @@ const App: React.FC = () => {
                        </div>
                        <div>
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Próximo Correlativo</label>
-                          <input required type="number" name="last_correlation_number" defaultValue={editingCompany?.lastCorrelationNumber || 1} placeholder="1" className="w-full bg-slate-50 border-none p-4 rounded-2xl font-bold" />
+                          <input required type="number" name="last_correlation_number" defaultValue={editingCompany?.lastCorrelationNumber || 1} placeholder="1" className="w-full bg-slate-50 border-none p-4 rounded-2xl font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
                        </div>
                     </div>
                     <div className="flex flex-col gap-2 pt-4">
@@ -676,15 +759,15 @@ const App: React.FC = () => {
 
               <div className="lg:col-span-2 space-y-4">
                 {companies.map(c => (
-                  <div key={c.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-blue-200 transition-all">
-                    <div className="flex items-center gap-5">
-                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
-                        <span className="material-icons text-3xl">business</span>
+                  <div key={c.id} className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-3xl shadow-sm border border-slate-100 flex justify-between items-center group hover:border-blue-200 transition-all">
+                    <div className="flex items-center gap-3 md:gap-5">
+                      <div className="w-10 h-10 md:w-14 md:h-14 bg-slate-50 rounded-xl md:rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+                        <span className="material-icons text-xl md:text-3xl">business</span>
                       </div>
                       <div>
-                        <h4 className="font-black text-lg text-slate-800">{c.name}</h4>
-                        <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
-                           {c.rif} • {c.retentionPercentage}% • Próximo: {String(c.lastCorrelationNumber).padStart(8, '0')}
+                        <h4 className="font-black text-sm md:text-lg text-slate-800">{c.name}</h4>
+                        <p className="text-[9px] md:text-sm font-bold text-slate-400 uppercase tracking-widest">
+                           {c.rif} • {c.retentionPercentage}%
                         </p>
                       </div>
                     </div>
@@ -693,13 +776,13 @@ const App: React.FC = () => {
                       className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                       title="Editar Empresa"
                     >
-                      <span className="material-icons">edit</span>
+                      <span className="material-icons text-lg md:text-xl">edit</span>
                     </button>
                   </div>
                 ))}
                 {companies.length === 0 && (
-                  <div className="p-20 text-center bg-white rounded-[2.5rem] border border-dashed border-slate-200">
-                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No hay empresas registradas</p>
+                  <div className="p-12 md:p-20 text-center bg-white rounded-[2rem] md:rounded-[2.5rem] border border-dashed border-slate-200">
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] md:text-xs">No hay empresas registradas</p>
                   </div>
                 )}
               </div>
@@ -709,27 +792,27 @@ const App: React.FC = () => {
 
         {/* MI PERFIL */}
         {route === AppRoute.PROFILE && userProfile && (
-           <div className="max-w-4xl mx-auto space-y-12 animate-fade-in">
-              <header>
+           <div className="max-w-4xl mx-auto space-y-6 md:space-y-12 animate-fade-in">
+              <header className="hidden md:block">
                 <h2 className="text-3xl font-black tracking-tight">Mi Perfil</h2>
                 <p className="text-slate-500 mt-2">Gestiona tu información personal y seguridad.</p>
               </header>
 
-              <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-32 relative">
-                   <div className="absolute -bottom-12 left-12 w-24 h-24 bg-white rounded-[2rem] shadow-xl flex items-center justify-center border-4 border-white">
-                      <span className="material-icons text-blue-600 text-4xl">person</span>
+              <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-24 md:h-32 relative">
+                   <div className="absolute -bottom-10 md:-bottom-12 left-8 md:left-12 w-20 h-20 md:w-24 md:h-24 bg-white rounded-[1.5rem] md:rounded-[2rem] shadow-xl flex items-center justify-center border-4 border-white">
+                      <span className="material-icons text-blue-600 text-3xl md:text-4xl">person</span>
                    </div>
                 </div>
-                <div className="p-12 pt-16">
-                   <form onSubmit={handleUpdateOwnProfile} className="space-y-8">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="p-6 md:p-12 pt-14 md:pt-16">
+                   <form onSubmit={handleUpdateOwnProfile} className="space-y-6 md:space-y-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
                          <div>
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Nombre Completo</label>
                             <input required name="first_name" defaultValue={userProfile.first_name} className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
                          </div>
                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Correo (No editable)</label>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Correo Electrónico</label>
                             <input disabled value={userProfile.email} className="w-full bg-slate-100 border-none p-4 rounded-2xl text-slate-400 cursor-not-allowed font-semibold" />
                          </div>
                          <div>
@@ -737,17 +820,25 @@ const App: React.FC = () => {
                             <input name="phone" defaultValue={userProfile.phone} className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
                          </div>
                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Nueva Contraseña (Opcional)</label>
-                            <input name="new_password" type="password" placeholder="Dejar en blanco para no cambiar" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Nueva Contraseña</label>
+                            <input name="new_password" type="password" placeholder="Opcional" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
                          </div>
                       </div>
 
-                      <div className="pt-8 border-t flex justify-end">
-                        <button type="submit" disabled={isSavingProfile} className="bg-blue-600 text-white px-12 py-4 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 flex items-center gap-2">
+                      <div className="pt-6 border-t flex flex-col md:flex-row gap-3">
+                        <button type="submit" disabled={isSavingProfile} className="flex-1 md:flex-none bg-blue-600 text-white px-12 py-4 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2">
                            {isSavingProfile ? (
                              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
                            ) : <span className="material-icons">save</span>}
                            Guardar Cambios
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => supabase.auth.signOut()}
+                          className="md:hidden bg-red-50 text-red-600 px-12 py-4 rounded-2xl font-black transition-all flex items-center justify-center gap-2"
+                        >
+                           <span className="material-icons">logout</span>
+                           Cerrar Sesión
                         </button>
                       </div>
                    </form>
@@ -759,70 +850,70 @@ const App: React.FC = () => {
         {/* WIZARD DE RETENCION */}
         {route === AppRoute.CREATE_RETENTION && (
            <div className="max-w-4xl mx-auto animate-fade-in">
-              <div className="mb-10 flex items-center justify-between">
+              <div className="mb-6 md:mb-10 flex items-center justify-between">
                 <div>
-                  <h2 className="text-3xl font-black tracking-tight">Nueva Retención</h2>
-                  <p className="text-slate-500">Paso {wizStep} de 3</p>
+                  <h2 className="hidden md:block text-3xl font-black tracking-tight">Nueva Retención</h2>
+                  <p className="text-slate-500 text-sm md:text-base">Paso {wizStep} de 3</p>
                 </div>
                 <div className="flex gap-2">
                    {[1,2,3].map(s => (
-                     <div key={s} className={`h-2 rounded-full transition-all duration-300 ${wizStep >= s ? 'w-10 bg-blue-600' : 'w-4 bg-slate-200'}`}></div>
+                     <div key={s} className={`h-1.5 md:h-2 rounded-full transition-all duration-300 ${wizStep >= s ? 'w-8 md:w-10 bg-blue-600' : 'w-3 md:w-4 bg-slate-200'}`}></div>
                    ))}
                 </div>
               </div>
 
               {wizStep === 1 && (
-                <div className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100">
-                   <h3 className="font-bold text-xl mb-8">1. Seleccione la Empresa Agente</h3>
+                <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100">
+                   <h3 className="font-bold text-lg md:text-xl mb-6 md:mb-8">1. Empresa Agente</h3>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {companies.map(c => (
-                        <button key={c.id} onClick={() => { setSelectedCompany(c); setWizStep(2); }} className="text-left p-6 border-2 border-slate-100 rounded-3xl hover:border-blue-500 hover:bg-blue-50 transition-all flex justify-between items-center group">
-                          <div>
-                            <p className="font-bold group-hover:text-blue-700">{c.name}</p>
-                            <p className="text-xs text-slate-400">RIF: {c.rif} • Sig: {String(c.lastCorrelationNumber).padStart(8, '0')}</p>
+                        <button key={c.id} onClick={() => { setSelectedCompany(c); setWizStep(2); }} className="text-left p-4 md:p-6 border-2 border-slate-50 rounded-2xl md:rounded-3xl hover:border-blue-500 hover:bg-blue-50 transition-all flex justify-between items-center group">
+                          <div className="truncate pr-2">
+                            <p className="font-bold group-hover:text-blue-700 truncate">{c.name}</p>
+                            <p className="text-[10px] md:text-xs text-slate-400">RIF: {c.rif}</p>
                           </div>
                           <span className="material-icons text-slate-300 group-hover:text-blue-500">chevron_right</span>
                         </button>
                       ))}
-                      {companies.length === 0 && <p className="col-span-2 text-center py-10 text-slate-400">No hay empresas registradas.</p>}
+                      {companies.length === 0 && (
+                        <div className="col-span-2 text-center py-10 px-4 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                          <p className="text-slate-400 font-bold text-xs">No hay empresas registradas para facturar.</p>
+                        </div>
+                      )}
                    </div>
                 </div>
               )}
 
               {wizStep === 2 && (
-                <div className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 relative">
-                  {isAnalyzing && <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-20 rounded-[2.5rem]">
-                    <div className="w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mb-4"></div>
-                    <p className="font-bold text-purple-600 uppercase text-xs tracking-widest">IA Analizando Factura...</p>
+                <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
+                  {isAnalyzing && <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center z-20">
+                    <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                    <p className="font-bold text-blue-600 uppercase text-[10px] tracking-widest text-center px-6">Procesando imagen con IA...</p>
                   </div>}
                   
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
-                    <h3 className="font-bold text-xl">2. Datos del Proveedor</h3>
-                    <div className="relative group">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 md:mb-10">
+                    <h3 className="font-bold text-lg md:text-xl">2. Proveedor</h3>
+                    <div className="relative w-full md:w-auto group">
                       <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-20" />
-                      <button className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white px-6 py-3 rounded-2xl flex items-center gap-2 shadow-xl shadow-purple-200 hover:scale-105 transition-all">
-                        <span className="material-icons">auto_awesome</span> Escaneo Inteligente
+                      <button className="w-full bg-gradient-to-br from-blue-600 to-indigo-700 text-white px-6 py-4 md:py-3 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-200 hover:scale-105 transition-all">
+                        <span className="material-icons">auto_awesome</span> Escanear Factura
                       </button>
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-3 rounded-xl shadow-2xl z-30 text-center leading-relaxed">
-                        Nuestra IA extraerá automáticamente RIF, Nombre, Montos y Fechas de la foto de la factura.
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
-                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4 md:space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">RIF</label>
-                          <input value={wizSupplier.rif} onChange={e => setWizSupplier({...wizSupplier, rif: e.target.value})} placeholder="J-12345678-0" className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 transition-all" />
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">RIF del Proveedor</label>
+                          <input value={wizSupplier.rif} onChange={e => setWizSupplier({...wizSupplier, rif: e.target.value})} placeholder="J-12345678-0" className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
                        </div>
                        <div>
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Razón Social</label>
-                          <input value={wizSupplier.name} onChange={e => setWizSupplier({...wizSupplier, name: e.target.value})} placeholder="Nombre de la empresa" className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 transition-all" />
+                          <input value={wizSupplier.name} onChange={e => setWizSupplier({...wizSupplier, name: e.target.value})} placeholder="Nombre completo" className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
                        </div>
                     </div>
-                    <div className="flex justify-between pt-10 border-t">
-                       <button onClick={() => setWizStep(1)} className="text-slate-400 font-bold">Atrás</button>
+                    <div className="flex justify-between pt-8 md:pt-10 border-t">
+                       <button onClick={() => setWizStep(1)} className="text-slate-400 font-bold px-4 py-2 hover:bg-slate-50 rounded-xl transition-all">Atrás</button>
                        <button onClick={() => setWizStep(3)} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-blue-600 transition-all">Siguiente</button>
                     </div>
                   </div>
@@ -830,52 +921,52 @@ const App: React.FC = () => {
               )}
 
               {wizStep === 3 && (selectedCompany) && (
-                <div className="space-y-8 animate-fade-in">
-                   <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <div className="space-y-6 md:space-y-8 animate-fade-in">
+                   <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
                       <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
                         <span className="material-icons text-blue-600">receipt</span>
                         Añadir Factura
                       </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                         <div>
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nro Factura</label>
-                          <input value={newItem.invoiceNumber || ''} onChange={e => setNewItem({...newItem, invoiceNumber: e.target.value})} className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1" />
+                          <input value={newItem.invoiceNumber || ''} onChange={e => setNewItem({...newItem, invoiceNumber: e.target.value})} className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                         <div>
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Monto Total Bs</label>
-                          <input type="number" value={newItem.totalAmount || ''} onChange={e => setNewItem({...newItem, totalAmount: parseFloat(e.target.value)})} className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1" />
+                          <input type="number" value={newItem.totalAmount || ''} onChange={e => setNewItem({...newItem, totalAmount: parseFloat(e.target.value)})} className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                         <div className="flex items-end">
                            <button onClick={handleAddItem} className="w-full bg-blue-50 text-blue-600 py-4 rounded-2xl font-black hover:bg-blue-600 hover:text-white transition-all">
-                             + Agregar
+                             + Agregar a Lista
                            </button>
                         </div>
                       </div>
                    </div>
 
                    {wizItems.length > 0 && (
-                     <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-                        <h4 className="font-bold text-slate-400 uppercase text-xs mb-6 tracking-widest">Resumen de Comprobante ({selectedCompany.retentionPercentage}%)</h4>
-                        <div className="space-y-4">
+                     <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                        <h4 className="font-bold text-slate-400 uppercase text-[9px] md:text-xs mb-6 tracking-widest">Resumen de Comprobante ({selectedCompany.retentionPercentage}%)</h4>
+                        <div className="space-y-3 md:space-y-4">
                           {wizItems.map(item => (
-                            <div key={item.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 transition-all">
+                            <div key={item.id} className="flex justify-between items-center p-4 md:p-5 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 transition-all">
                               <div>
-                                 <p className="font-black text-slate-900">Factura #{item.invoiceNumber}</p>
-                                 <p className="text-[10px] text-slate-400 font-bold uppercase">IVA Retenido: {item.retentionAmount.toLocaleString('es-VE')} Bs</p>
+                                 <p className="font-black text-slate-900 text-sm md:text-base">Factura #{item.invoiceNumber}</p>
+                                 <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase">IVA: {item.retentionAmount.toLocaleString('es-VE')} Bs</p>
                               </div>
-                              <span className="font-black text-blue-600 text-lg">{item.totalAmount.toLocaleString('es-VE')} Bs</span>
+                              <span className="font-black text-blue-600 text-base md:text-lg">{item.totalAmount.toLocaleString('es-VE')} Bs</span>
                             </div>
                           ))}
                         </div>
-                        <div className="mt-8 pt-8 border-t flex justify-between items-center">
-                           <div>
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Retención</p>
+                        <div className="mt-8 pt-6 md:pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-6">
+                           <div className="text-center md:text-left">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total a Retener</p>
                               <p className="text-3xl font-black text-slate-900">
-                                {wizItems.reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE')} Bs
+                                {wizItems.reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE')} <span className="text-lg">Bs</span>
                               </p>
                            </div>
-                           <button onClick={generateVoucher} className="bg-blue-600 text-white px-12 py-5 rounded-[2rem] font-black shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:-translate-y-1 transition-all">
-                             Emitir Comprobante Oficial
+                           <button onClick={generateVoucher} className="w-full md:w-auto bg-blue-600 text-white px-12 py-5 rounded-[2rem] font-black shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:-translate-y-1 transition-all">
+                             Emitir Comprobante
                            </button>
                         </div>
                      </div>
@@ -886,13 +977,14 @@ const App: React.FC = () => {
         )}
 
         {route === AppRoute.HISTORY && (
-          <div className="space-y-10 animate-fade-in max-w-6xl mx-auto">
-            <header>
-              <h2 className="text-3xl font-black tracking-tight">Historial de Comprobantes</h2>
+          <div className="space-y-6 md:space-y-10 animate-fade-in max-w-6xl mx-auto">
+            <header className="hidden md:block">
+              <h2 className="text-3xl font-black tracking-tight">Historial</h2>
               <p className="text-slate-500 mt-2 font-medium">Gestiona y visualiza tus retenciones emitidas.</p>
             </header>
             
-            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
+            {/* Desktop Table View */}
+            <div className="hidden md:block bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
                <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50/50 border-b border-slate-100">
                     <tr>
@@ -920,19 +1012,41 @@ const App: React.FC = () => {
                       </tr>
                     ))}
                     {generatedVouchers.length === 0 && (
-                      <tr><td colSpan={4} className="p-24 text-center text-slate-300 font-bold uppercase tracking-widest">No hay registros disponibles</td></tr>
+                      <tr><td colSpan={4} className="p-24 text-center text-slate-300 font-bold uppercase tracking-widest">No hay registros</td></tr>
                     )}
                   </tbody>
                </table>
+            </div>
+
+            {/* Mobile Cards View */}
+            <div className="md:hidden space-y-4">
+              {generatedVouchers.map(v => (
+                <div key={v.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center group">
+                  <div className="truncate pr-2">
+                    <p className="text-[10px] font-black text-blue-600 mb-1 uppercase tracking-tighter">Comprobante #{v.voucherNumber.substring(v.voucherNumber.length - 8)}</p>
+                    <h4 className="font-bold text-slate-800 truncate">{v.supplier.name}</h4>
+                    <p className="text-[10px] text-slate-400 font-medium">{v.date}</p>
+                  </div>
+                  <button onClick={() => { setCurrentVoucher(v); setRoute(AppRoute.VIEW_RETENTION); }} className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center active:bg-blue-600 active:text-white transition-all shadow-sm">
+                    <span className="material-icons">visibility</span>
+                  </button>
+                </div>
+              ))}
+              {generatedVouchers.length === 0 && (
+                <div className="p-20 text-center">
+                  <span className="material-icons text-slate-200 text-6xl">receipt</span>
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-4">Sin registros disponibles</p>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {route === AppRoute.VIEW_RETENTION && currentVoucher && (
            <div className="flex flex-col items-center animate-fade-in-up">
-             <div className="w-full max-w-4xl flex justify-start mb-8 no-print">
-               <button onClick={() => setRoute(AppRoute.HISTORY)} className="text-slate-400 hover:text-slate-900 font-bold flex items-center gap-2 transition-all">
-                 <span className="material-icons">arrow_back</span> Volver al Historial
+             <div className="w-full max-w-4xl flex justify-start mb-6 md:mb-8 no-print">
+               <button onClick={() => setRoute(AppRoute.HISTORY)} className="text-slate-400 hover:text-slate-900 font-bold flex items-center gap-2 transition-all px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-50">
+                 <span className="material-icons">arrow_back</span> Atrás
                </button>
              </div>
              <RetentionVoucher data={currentVoucher} />
@@ -941,47 +1055,47 @@ const App: React.FC = () => {
 
         {/* GESTION DE EQUIPO */}
         {route === AppRoute.USER_MANAGEMENT && userProfile?.role === 'admin' && (
-          <div className="max-w-5xl mx-auto space-y-12 animate-fade-in">
-             <header>
-               <h2 className="text-3xl font-black tracking-tight">Gestión del Equipo</h2>
+          <div className="max-w-5xl mx-auto space-y-8 md:space-y-12 animate-fade-in">
+             <header className="hidden md:block">
+               <h2 className="text-3xl font-black tracking-tight">Mi Equipo</h2>
                <p className="text-slate-500 mt-2">Registra operadores para que emitan retenciones a nombre de tus empresas.</p>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-10">
                <div className="lg:col-span-1">
-                  <div className="bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 sticky top-8">
+                  <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 md:sticky md:top-8">
                     <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
                       <span className="material-icons text-blue-600">{editingSubUser ? 'edit' : 'person_add'}</span>
-                      {editingSubUser ? 'Editar Operador' : 'Nuevo Operador'}
+                      {editingSubUser ? 'Editar' : 'Nuevo Miembro'}
                     </h3>
-                    <form onSubmit={handleCreateSubUser} className="space-y-5">
+                    <form onSubmit={handleCreateSubUser} className="space-y-4 md:space-y-5">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Nombre Completo</label>
-                        <input required name="first_name" defaultValue={editingSubUser?.first_name} placeholder="Ej: Maria Perez" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Nombre</label>
+                        <input required name="first_name" defaultValue={editingSubUser?.first_name} placeholder="Nombre completo" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Correo Electrónico</label>
-                        <input required disabled={!!editingSubUser} name="email" type="email" defaultValue={editingSubUser?.email} placeholder="operador@empresa.com" className={`w-full bg-slate-50 border-none p-4 rounded-2xl outline-none ${editingSubUser ? 'text-slate-400' : 'focus:ring-2 focus:ring-blue-500'}`} />
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Email</label>
+                        <input required disabled={!!editingSubUser} name="email" type="email" defaultValue={editingSubUser?.email} placeholder="ejemplo@empresa.com" className={`w-full bg-slate-50 border-none p-4 rounded-2xl outline-none ${editingSubUser ? 'text-slate-400' : 'focus:ring-2 focus:ring-blue-500'}`} />
                       </div>
                       {!editingSubUser && (
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Contraseña de Acceso</label>
-                          <input required name="password" type="password" placeholder="Mínimo 6 caracteres" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Clave</label>
+                          <input required name="password" type="password" placeholder="Mínimo 6" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                       )}
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Rol del Usuario</label>
-                        <select name="role" defaultValue={editingSubUser?.role || 'operator'} className="w-full bg-slate-50 border-none p-4 rounded-2xl appearance-none font-bold">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Rol</label>
+                        <select name="role" defaultValue={editingSubUser?.role || 'operator'} className="w-full bg-slate-50 border-none p-4 rounded-2xl appearance-none font-bold outline-none">
                            <option value="operator">Operador (Solo emite)</option>
-                           <option value="admin">Administrador (Control total)</option>
+                           <option value="admin">Administrador (Total)</option>
                         </select>
                       </div>
                       
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2 pt-4">
                         <button type="submit" disabled={isCreatingSubUser} className="w-full bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg flex items-center justify-center gap-2">
                           {isCreatingSubUser ? (
                             <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                          ) : editingSubUser ? 'Actualizar Operador' : 'Crear Acceso Operador'}
+                          ) : editingSubUser ? 'Actualizar' : 'Crear Acceso'}
                         </button>
                         {editingSubUser && (
                            <button type="button" onClick={() => setEditingSubUser(null)} className="w-full bg-slate-200 text-slate-600 rounded-2xl font-bold py-3 hover:bg-slate-300 transition-all">
@@ -994,7 +1108,7 @@ const App: React.FC = () => {
                </div>
                <div className="lg:col-span-2">
                   <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
-                     <table className="w-full text-sm text-left">
+                     <table className="hidden md:table w-full text-sm text-left">
                         <thead className="bg-slate-50/50 border-b">
                            <tr>
                               <th className="p-6 uppercase tracking-widest text-[10px] font-bold text-slate-400">Nombre</th>
@@ -1024,11 +1138,34 @@ const App: React.FC = () => {
                                </td>
                              </tr>
                            ))}
-                           {subUsers.length === 0 && (
-                             <tr><td colSpan={3} className="p-10 text-center text-slate-400 italic">No hay operadores registrados actualmente</td></tr>
-                           )}
                         </tbody>
                      </table>
+                     
+                     {/* Mobile Team List */}
+                     <div className="md:hidden divide-y">
+                        {subUsers.map(u => (
+                          <div key={u.id} className="p-5 flex items-center justify-between">
+                            <div>
+                               <p className="font-bold text-slate-800 text-sm">{u.first_name}</p>
+                               <p className="text-[10px] text-slate-400 mb-2">{u.email}</p>
+                               <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border ${u.role === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                 {u.role}
+                               </span>
+                            </div>
+                            <div className="flex gap-2">
+                               <button onClick={() => setEditingSubUser(u)} className="w-10 h-10 bg-slate-50 text-slate-400 active:bg-blue-600 active:text-white rounded-xl flex items-center justify-center transition-all">
+                                  <span className="material-icons text-lg">edit</span>
+                               </button>
+                               <button onClick={() => handleDeleteSubUser(u.id)} className="w-10 h-10 bg-slate-50 text-slate-400 active:bg-red-600 active:text-white rounded-xl flex items-center justify-center transition-all">
+                                  <span className="material-icons text-lg">delete</span>
+                               </button>
+                            </div>
+                          </div>
+                        ))}
+                        {subUsers.length === 0 && (
+                           <div className="p-10 text-center text-slate-400 italic text-xs">No hay miembros en el equipo</div>
+                        )}
+                     </div>
                   </div>
                </div>
             </div>
