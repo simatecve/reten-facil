@@ -143,6 +143,11 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
 
+  // States for sub-users and profile
+  const [isCreatingSubUser, setIsCreatingSubUser] = useState(false);
+  const [editingSubUser, setEditingSubUser] = useState<UserProfile | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
   // Form para nueva factura individual
   const [newItem, setNewItem] = useState<Partial<InvoiceItem>>({
     transactionType: '01-reg',
@@ -199,6 +204,12 @@ const App: React.FC = () => {
         invoiceUrl: r.invoice_url, retentionPercentage: r.retention_percentage,
         company: r.companies, supplier: r.suppliers, items: r.items
     })));
+
+    // Cargar Sub-usuarios si es Admin
+    if (userProfile.role === 'admin') {
+      const { data: subs } = await supabase.from('profiles').select('*').eq('admin_id', userProfile.id);
+      if (subs) setSubUsers(subs);
+    }
   };
 
   useEffect(() => {
@@ -233,7 +244,6 @@ const App: React.FC = () => {
     setNewItem({ transactionType: '01-reg', taxRate: 16, exemptAmount: 0 });
   };
 
-  // Recalcular montos de los ítems si cambia el porcentaje global del comprobante
   useEffect(() => {
     if (wizItems.length > 0) {
       const updated = wizItems.map(item => {
@@ -256,13 +266,9 @@ const App: React.FC = () => {
       try {
         const data = JSON.parse(jsonStr);
         if (data) {
-          // Buscamos si el RIF ya existe en nuestra base de datos
           const existing = suppliers.find(s => s.rif.replace(/\W/g, '').toUpperCase() === data.supplierRif?.replace(/\W/g, '').toUpperCase());
-          if (existing) {
-            setSelectedSupplier(existing);
-          } else {
-            setSelectedSupplier({ name: data.supplierName || '', rif: data.supplierRif || '', address: '' });
-          }
+          if (existing) setSelectedSupplier(existing);
+          else setSelectedSupplier({ name: data.supplierName || '', rif: data.supplierRif || '', address: '' });
           
           setNewItem(prev => ({ 
             ...prev, 
@@ -283,7 +289,6 @@ const App: React.FC = () => {
     if (!userProfile || !selectedCompany || !selectedSupplier || wizItems.length === 0) return;
     const adminId = userProfile.role === 'admin' ? userProfile.id : userProfile.admin_id;
     
-    // 1. Asegurar el proveedor en la DB si es nuevo
     let supplierId = selectedSupplier.id;
     if (!supplierId) {
        const { data: newSup, error: supErr } = await supabase.from('suppliers').insert([{
@@ -314,8 +319,8 @@ const App: React.FC = () => {
       user_id: adminId,
       company_id: selectedCompany.id,
       supplier_id: supplierId,
-      supplier_name: selectedSupplier.name, // Snapshot
-      supplier_rif: selectedSupplier.rif,   // Snapshot
+      supplier_name: selectedSupplier.name,
+      supplier_rif: selectedSupplier.rif,
       items: wizItems,
       voucher_number: voucherNumber,
       control_number: wizItems[0].controlNumber,
@@ -352,6 +357,80 @@ const App: React.FC = () => {
     if (!error) { loadData(); alert("Empresa registrada"); (e.target as HTMLFormElement).reset(); }
   };
 
+  const handleCreateSubUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile || userProfile.role !== 'admin') return;
+    setIsCreatingSubUser(true);
+    const fd = new FormData(e.target as HTMLFormElement);
+    const email = (fd.get('email') as string).trim();
+    const password = fd.get('password') as string;
+    const firstName = (fd.get('first_name') as string).trim();
+    const role = (fd.get('role') as string) as UserRole;
+
+    try {
+        if (editingSubUser) {
+            const { error: profileError } = await supabase.from('profiles').update({
+                first_name: firstName,
+                role: role
+            }).eq('id', editingSubUser.id);
+            if (profileError) throw profileError;
+            alert(`Operador "${firstName}" actualizado.`);
+        } else {
+            const { data: authData, error: authError } = await supabase.auth.signUp({
+                email,
+                password,
+            });
+            if (authError) throw authError;
+
+            const { error: profileError } = await supabase.from('profiles').insert([{
+              id: authData.user?.id, 
+              email: email, 
+              first_name: firstName,
+              role: role, 
+              admin_id: userProfile.id
+            }]);
+            if (profileError) throw profileError;
+            alert(`Acceso creado con éxito.`);
+        }
+        loadData(); 
+        setEditingSubUser(null);
+        (e.target as HTMLFormElement).reset(); 
+    } catch (err: any) { alert("ERROR: " + err.message); } 
+    finally { setIsCreatingSubUser(false); }
+  };
+
+  const handleDeleteSubUser = async (id: string) => {
+    if (!window.confirm("¿Eliminar este acceso?")) return;
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (!error) loadData();
+  };
+
+  const handleUpdateOwnProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile) return;
+    setIsSavingProfile(true);
+    const fd = new FormData(e.target as HTMLFormElement);
+    const firstName = fd.get('first_name') as string;
+    const phone = fd.get('phone') as string;
+    const newPassword = fd.get('new_password') as string;
+
+    try {
+        const { error: profileError } = await supabase.from('profiles').update({
+            first_name: firstName,
+            phone: phone
+        }).eq('id', userProfile.id);
+        if (profileError) throw profileError;
+
+        if (newPassword.trim()) {
+            const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
+            if (authError) throw authError;
+        }
+        alert("Perfil actualizado.");
+        fetchProfile(userProfile.id);
+    } catch (err: any) { alert("Error: " + err.message); } 
+    finally { setIsSavingProfile(false); }
+  };
+
   const resetStates = () => {
     setWizStep(1);
     setSelectedCompany(null);
@@ -359,6 +438,7 @@ const App: React.FC = () => {
     setWizItems([]);
     setWizRetentionPercentage(75);
     setLastScannedFile(null);
+    setEditingSubUser(null);
   };
 
   const getPageTitle = (r: AppRoute) => {
@@ -367,11 +447,54 @@ const App: React.FC = () => {
       case AppRoute.CREATE_RETENTION: return 'Nueva Retención';
       case AppRoute.HISTORY: return 'Historial';
       case AppRoute.SUPPLIERS: return 'Proveedores';
-      case AppRoute.PROFILE: return 'Perfil';
+      case AppRoute.PROFILE: return 'Mi Perfil';
+      case AppRoute.USER_MANAGEMENT: return 'Mi Equipo';
       case AppRoute.CREATE_COMPANY: return 'Empresas';
       default: return 'RetenFácil';
     }
   }
+
+  // --- Analítica del Dashboard ---
+  const dashboardStats = useMemo(() => {
+    const totalRetained = generatedVouchers.reduce((acc, v) => acc + (v.items?.reduce((sum, i) => sum + i.retentionAmount, 0) || 0), 0);
+    const totalIVA = generatedVouchers.reduce((acc, v) => acc + (v.items?.reduce((sum, i) => sum + i.taxAmount, 0) || 0), 0);
+    
+    // Agrupar por mes (últimos 6 meses)
+    const monthlyData: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlyData[key] = 0;
+    }
+
+    generatedVouchers.forEach(v => {
+      const date = new Date(v.date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (monthlyData[key] !== undefined) {
+        monthlyData[key] += v.items?.reduce((sum, i) => sum + i.retentionAmount, 0) || 0;
+      }
+    });
+
+    const chartLabels = Object.keys(monthlyData).map(k => {
+      const [y, m] = k.split('-');
+      const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      return monthNames[parseInt(m) - 1];
+    });
+    const chartValues = Object.values(monthlyData);
+    const maxVal = Math.max(...chartValues, 1);
+
+    // Top proveedores
+    const supplierRanking: Record<string, { name: string, total: number }> = {};
+    generatedVouchers.forEach(v => {
+      const sId = v.supplier?.id || 'unknown';
+      if (!supplierRanking[sId]) supplierRanking[sId] = { name: v.supplier?.name || 'Desconocido', total: 0 };
+      supplierRanking[sId].total += v.items?.reduce((sum, i) => sum + i.retentionAmount, 0) || 0;
+    });
+    const topSuppliers = Object.values(supplierRanking).sort((a, b) => b.total - a.total).slice(0, 4);
+
+    return { totalRetained, totalIVA, chartLabels, chartValues, maxVal, topSuppliers };
+  }, [generatedVouchers]);
 
   if (loading) return null;
   if (!user || route === AppRoute.LANDING) return <LandingPage />;
@@ -391,22 +514,134 @@ const App: React.FC = () => {
       
       <main className={`flex-1 transition-all duration-300 pb-24 md:pb-8 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} p-4 md:p-8`}>
         
-        {/* DASHBOARD SIMPLIFICADO */}
+        {/* DASHBOARD */}
         {route === AppRoute.DASHBOARD && (
           <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-             <h1 className="text-4xl font-black">Hola, {userProfile?.first_name}</h1>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Retenciones Emitidas</p>
-                   <p className="text-4xl font-black">{generatedVouchers.length}</p>
+             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                  <h1 className="text-4xl font-black tracking-tight text-slate-900">Hola, {userProfile?.first_name}</h1>
+                  <p className="text-slate-500 font-medium">Aquí tienes el resumen de tu actividad fiscal.</p>
                 </div>
-                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Proveedores</p>
-                   <p className="text-4xl font-black">{suppliers.length}</p>
+                <button onClick={() => setRoute(AppRoute.CREATE_RETENTION)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-all">
+                  <span className="material-icons">add_circle</span> Nueva Retención
+                </button>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                      <span className="material-icons text-6xl">account_balance_wallet</span>
+                   </div>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Retenido (Bs)</p>
+                   <p className="text-3xl font-black mt-1">{dashboardStats.totalRetained.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
                 </div>
-                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Empresas</p>
-                   <p className="text-4xl font-black">{companies.length}</p>
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                      <span className="material-icons text-6xl">receipt_long</span>
+                   </div>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">IVA Gestionado (Bs)</p>
+                   <p className="text-3xl font-black mt-1">{dashboardStats.totalIVA.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                      <span className="material-icons text-6xl">people</span>
+                   </div>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Proveedores</p>
+                   <p className="text-3xl font-black mt-1">{suppliers.length}</p>
+                </div>
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                      <span className="material-icons text-6xl">description</span>
+                   </div>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vouchers</p>
+                   <p className="text-3xl font-black mt-1">{generatedVouchers.length}</p>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Gráfico de barras simple SVG */}
+                <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                   <h3 className="font-black text-lg mb-8">Tendencia de Retención (6 meses)</h3>
+                   <div className="h-64 flex items-end justify-between gap-4 px-2">
+                      {dashboardStats.chartValues.map((val, idx) => (
+                        <div key={idx} className="flex-1 flex flex-col items-center group relative">
+                          <div 
+                            className="w-full bg-blue-100 group-hover:bg-blue-600 rounded-t-xl transition-all duration-500" 
+                            style={{ height: `${(val / dashboardStats.maxVal) * 100}%` }}
+                          >
+                             <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                               Bs {val.toLocaleString()}
+                             </div>
+                          </div>
+                          <p className="text-[10px] font-bold text-slate-400 mt-4 uppercase">{dashboardStats.chartLabels[idx]}</p>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+
+                {/* Top Proveedores */}
+                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                   <h3 className="font-black text-lg mb-6">Top Proveedores</h3>
+                   <div className="space-y-6">
+                      {dashboardStats.topSuppliers.length > 0 ? dashboardStats.topSuppliers.map((s, i) => (
+                        <div key={i} className="space-y-2">
+                           <div className="flex justify-between text-xs font-bold uppercase tracking-tight">
+                              <span className="text-slate-500 truncate max-w-[150px]">{s.name}</span>
+                              <span className="text-slate-900">Bs {s.total.toLocaleString()}</span>
+                           </div>
+                           <div className="w-full h-2 bg-slate-50 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-blue-500 rounded-full transition-all duration-1000" 
+                                style={{ width: `${(s.total / Math.max(...dashboardStats.topSuppliers.map(p => p.total))) * 100}%` }}
+                              ></div>
+                           </div>
+                        </div>
+                      )) : (
+                        <p className="text-slate-400 text-sm py-10 text-center font-medium">Aún no hay datos de proveedores.</p>
+                      )}
+                   </div>
+                </div>
+             </div>
+
+             {/* Actividad Reciente */}
+             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <div className="flex justify-between items-center mb-6">
+                   <h3 className="font-black text-lg">Actividad Reciente</h3>
+                   <button onClick={() => setRoute(AppRoute.HISTORY)} className="text-blue-600 text-xs font-bold uppercase hover:underline">Ver Todo</button>
+                </div>
+                <div className="overflow-x-auto">
+                   <table className="w-full text-left">
+                      <thead>
+                         <tr className="border-b border-slate-50">
+                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">N° Voucher</th>
+                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Proveedor</th>
+                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Retenido</th>
+                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Acción</th>
+                         </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                         {generatedVouchers.slice(0, 5).map(v => (
+                           <tr key={v.id} className="hover:bg-slate-50 transition-all group">
+                              <td className="py-4 text-sm font-bold text-blue-600">{v.voucherNumber}</td>
+                              <td className="py-4 text-sm font-medium text-slate-700">{v.supplier?.name}</td>
+                              <td className="py-4 text-sm font-black text-right">Bs {v.items?.reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString()}</td>
+                              <td className="py-4 text-right">
+                                 <button 
+                                   onClick={() => { setCurrentVoucher(v); setRoute(AppRoute.VIEW_RETENTION); }}
+                                   className="text-slate-300 group-hover:text-blue-600 transition-colors"
+                                 >
+                                    <span className="material-icons">visibility</span>
+                                 </button>
+                              </td>
+                           </tr>
+                         ))}
+                         {generatedVouchers.length === 0 && (
+                           <tr>
+                              <td colSpan={4} className="py-10 text-center text-slate-400 text-sm italic">Sin registros aún.</td>
+                           </tr>
+                         )}
+                      </tbody>
+                   </table>
                 </div>
              </div>
           </div>
@@ -440,11 +675,6 @@ const App: React.FC = () => {
                           <span className="material-icons text-slate-300 group-hover:text-blue-500">chevron_right</span>
                         </button>
                       ))}
-                      {companies.length === 0 && (
-                        <div className="col-span-2 text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
-                          <p className="text-slate-400 font-bold">No hay empresas registradas.</p>
-                        </div>
-                      )}
                    </div>
                 </div>
               )}
@@ -524,7 +754,6 @@ const App: React.FC = () => {
                           <span className="material-icons text-blue-600">receipt</span>
                           Datos de la Factura
                         </h3>
-                        {/* SELECTOR DE PORCENTAJE */}
                         <div className="flex bg-slate-100 p-1 rounded-xl">
                            <button 
                              onClick={() => setWizRetentionPercentage(75)} 
@@ -538,23 +767,10 @@ const App: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nro Factura</label>
-                          <input value={newItem.invoiceNumber || ''} onChange={e => setNewItem({...newItem, invoiceNumber: e.target.value})} className="w-full bg-slate-50 border-none p-3 rounded-xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nro Control</label>
-                          <input value={newItem.controlNumber || ''} onChange={e => setNewItem({...newItem, controlNumber: e.target.value})} className="w-full bg-slate-50 border-none p-3 rounded-xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Monto Total Bs</label>
-                          <input type="number" value={newItem.totalAmount || ''} onChange={e => setNewItem({...newItem, totalAmount: parseFloat(e.target.value)})} className="w-full bg-slate-50 border-none p-3 rounded-xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                        <div className="flex items-end">
-                           <button onClick={handleAddItem} className="w-full bg-blue-50 text-blue-600 py-3 rounded-xl font-black hover:bg-blue-600 hover:text-white transition-all">
-                             + Añadir
-                           </button>
-                        </div>
+                        <input value={newItem.invoiceNumber || ''} onChange={e => setNewItem({...newItem, invoiceNumber: e.target.value})} placeholder="N° Factura" className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <input value={newItem.controlNumber || ''} onChange={e => setNewItem({...newItem, controlNumber: e.target.value})} placeholder="N° Control" className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <input type="number" value={newItem.totalAmount || ''} onChange={e => setNewItem({...newItem, totalAmount: parseFloat(e.target.value)})} placeholder="Monto Total Bs" className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <button onClick={handleAddItem} className="w-full bg-blue-50 text-blue-600 py-3 rounded-xl font-black hover:bg-blue-600 hover:text-white transition-all">+ Añadir</button>
                       </div>
                    </div>
 
@@ -565,7 +781,7 @@ const App: React.FC = () => {
                             <div key={item.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-2xl border border-slate-100">
                               <div>
                                  <p className="font-black text-slate-900">Factura #{item.invoiceNumber}</p>
-                                 <p className="text-[10px] text-slate-400 font-bold uppercase">IVA a retener ({wizRetentionPercentage}%): {item.retentionAmount.toLocaleString('es-VE')} Bs</p>
+                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">IVA retener ({wizRetentionPercentage}%): {item.retentionAmount.toLocaleString('es-VE')} Bs</p>
                               </div>
                               <span className="font-black text-blue-600">{item.totalAmount.toLocaleString('es-VE')} Bs</span>
                             </div>
@@ -576,9 +792,7 @@ const App: React.FC = () => {
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Comprobante</p>
                               <p className="text-3xl font-black">{wizItems.reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE')} <span className="text-lg">Bs</span></p>
                            </div>
-                           <button onClick={generateVoucher} className="w-full md:w-auto bg-blue-600 text-white px-12 py-5 rounded-[2rem] font-black shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all">
-                             Emitir Comprobante
-                           </button>
+                           <button onClick={generateVoucher} className="w-full md:w-auto bg-blue-600 text-white px-12 py-5 rounded-[2rem] font-black shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all">Emitir Comprobante</button>
                         </div>
                      </div>
                    )}
@@ -587,9 +801,109 @@ const App: React.FC = () => {
            </div>
         )}
 
+        {/* MI EQUIPO (Gestión de Equipo) */}
+        {route === AppRoute.USER_MANAGEMENT && userProfile?.role === 'admin' && (
+          <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
+             <header>
+               <h2 className="text-3xl font-black">Mi Equipo</h2>
+               <p className="text-slate-500">Gestiona los accesos para tus operadores.</p>
+            </header>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+               <div className="lg:col-span-1">
+                  <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100">
+                    <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
+                      <span className="material-icons text-blue-600">{editingSubUser ? 'edit' : 'person_add'}</span>
+                      {editingSubUser ? 'Editar Miembro' : 'Nuevo Miembro'}
+                    </h3>
+                    <form onSubmit={handleCreateSubUser} className="space-y-4">
+                      <input required name="first_name" defaultValue={editingSubUser?.first_name} placeholder="Nombre completo" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                      <input required disabled={!!editingSubUser} name="email" type="email" defaultValue={editingSubUser?.email} placeholder="Email" className={`w-full bg-slate-50 border-none p-4 rounded-2xl outline-none font-semibold ${editingSubUser ? 'text-slate-400' : 'focus:ring-2 focus:ring-blue-500'}`} />
+                      {!editingSubUser && <input required name="password" type="password" placeholder="Contraseña" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />}
+                      <select name="role" defaultValue={editingSubUser?.role || 'operator'} className="w-full bg-slate-50 border-none p-4 rounded-2xl appearance-none font-bold outline-none">
+                         <option value="operator">Operador (Emisor)</option>
+                         <option value="admin">Administrador (Total)</option>
+                      </select>
+                      <button type="submit" disabled={isCreatingSubUser} className="w-full bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg">
+                        {isCreatingSubUser ? 'Procesando...' : editingSubUser ? 'Actualizar' : 'Crear Acceso'}
+                      </button>
+                      {editingSubUser && <button type="button" onClick={() => setEditingSubUser(null)} className="w-full bg-slate-200 text-slate-600 rounded-2xl font-bold py-3">Cancelar</button>}
+                    </form>
+                  </div>
+               </div>
+               <div className="lg:col-span-2">
+                  <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
+                     <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50/50 border-b">
+                           <tr>
+                              <th className="p-6 uppercase tracking-widest text-[10px] font-bold text-slate-400">Miembro</th>
+                              <th className="p-6 uppercase tracking-widest text-[10px] font-bold text-slate-400">Rol</th>
+                              <th className="p-6 text-center">Acciones</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                           {subUsers.map(u => (
+                             <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                               <td className="p-6">
+                                  <p className="font-bold text-slate-700">{u.first_name}</p>
+                                  <p className="text-xs text-slate-400">{u.email}</p>
+                               </td>
+                               <td className="p-6">
+                                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${u.role === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                    {u.role}
+                                  </span>
+                               </td>
+                               <td className="p-6 text-center flex items-center justify-center gap-2">
+                                  <button onClick={() => setEditingSubUser(u)} className="w-10 h-10 bg-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><span className="material-icons text-sm">edit</span></button>
+                                  <button onClick={() => handleDeleteSubUser(u.id)} className="w-10 h-10 bg-slate-100 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all"><span className="material-icons text-sm">delete</span></button>
+                               </td>
+                             </tr>
+                           ))}
+                        </tbody>
+                     </table>
+                  </div>
+               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MI PERFIL */}
+        {route === AppRoute.PROFILE && userProfile && (
+           <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+              <h2 className="text-3xl font-black">Mi Perfil</h2>
+              <div className="bg-white rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 h-24 relative"></div>
+                <div className="p-8 md:p-12 pt-16">
+                   <form onSubmit={handleUpdateOwnProfile} className="space-y-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                         <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Nombre</label>
+                            <input required name="first_name" defaultValue={userProfile.first_name} className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                         </div>
+                         <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Email</label>
+                            <input disabled value={userProfile.email} className="w-full bg-slate-100 border-none p-4 rounded-2xl text-slate-400 cursor-not-allowed font-semibold" />
+                         </div>
+                         <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Teléfono</label>
+                            <input name="phone" defaultValue={userProfile.phone} className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                         </div>
+                         <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Nueva Contraseña (Opcional)</label>
+                            <input name="new_password" type="password" placeholder="Mínimo 6 caracteres" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                         </div>
+                      </div>
+                      <button type="submit" disabled={isSavingProfile} className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 flex items-center gap-2">
+                        {isSavingProfile ? 'Guardando...' : 'Guardar Cambios'}
+                      </button>
+                   </form>
+                </div>
+              </div>
+           </div>
+        )}
+
         {/* HISTORIAL */}
         {route === AppRoute.HISTORY && (
-          <div className="max-w-6xl mx-auto space-y-6">
+          <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
              <h2 className="text-3xl font-black">Historial</h2>
              <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
                 <table className="w-full text-sm text-left">
@@ -624,7 +938,7 @@ const App: React.FC = () => {
 
         {/* PROVEEDORES */}
         {route === AppRoute.SUPPLIERS && (
-          <div className="max-w-6xl mx-auto space-y-6">
+          <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
              <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-black">Mis Proveedores</h2>
                 <button 
@@ -655,7 +969,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* VISTA DE COMPROBANTE */}
+        {/* VISTA DE COMPROBANTE (DETALLE) */}
         {route === AppRoute.VIEW_RETENTION && currentVoucher && (
            <div className="flex flex-col items-center animate-fade-in-up">
              <div className="w-full max-w-4xl flex justify-start mb-8 no-print">
@@ -667,19 +981,19 @@ const App: React.FC = () => {
            </div>
         )}
 
-        {/* GESTION DE EMPRESAS */}
+        {/* EMPRESAS */}
         {route === AppRoute.CREATE_COMPANY && userProfile?.role === 'admin' && (
            <div className="max-w-4xl mx-auto space-y-12 animate-fade-in">
               <header>
                 <h2 className="text-3xl font-black">Gestión de Empresas</h2>
-                <p className="text-slate-500">Agrega las entidades que emitirán las retenciones.</p>
+                <p className="text-slate-500">Entidades emisoras bajo tu control.</p>
               </header>
               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <form onSubmit={handleCreateCompany} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <input required name="name" placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
                   <input required name="rif" placeholder="RIF" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
                   <textarea required name="address" placeholder="Dirección Fiscal" className="w-full md:col-span-2 bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input required type="number" name="last_correlation_number" placeholder="Correlativo Inicial (ej: 1)" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="number" name="last_correlation_number" placeholder="Correlativo Inicial" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
                   <button type="submit" className="bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all">Registrar Empresa</button>
                 </form>
               </div>

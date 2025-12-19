@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { chatWithGemini } from '../lib/gemini';
 import { Company, RetentionVoucher, UserProfile } from '../types';
@@ -25,13 +26,13 @@ const ChatBot: React.FC<ChatBotProps> = ({ userProfile, companies, recentVoucher
     scrollToBottom();
   }, [messages, isOpen]);
 
-  // Construct context string from props
+  // Construct context string from props with safety checks
   const getSystemContext = () => {
     if (!userProfile) return "Usuario no identificado.";
 
-    const companyList = companies.map(c => `- ${c.name} (${c.rif}) - Retención: ${c.retentionPercentage}%`).join('\n');
-    const voucherList = recentVouchers.slice(0, 5).map(v => 
-      `- Comprobante: ${v.voucherNumber}, Fecha: ${v.date}, Prov: ${v.supplier.name}, Monto Retenido: ${(v.items || []).reduce((acc, i) => acc + i.retentionAmount, 0).toFixed(2)}`
+    const companyList = companies?.map(c => `- ${c?.name || 'Empresa'} (${c?.rif || 'S/R'})`).join('\n');
+    const voucherList = recentVouchers?.slice(0, 5).map(v => 
+      `- Comprobante: ${v?.voucherNumber}, Fecha: ${v?.date}, Prov: ${v?.supplier?.name || 'N/A'}, Monto Retenido: ${(v?.items || []).reduce((acc, i) => acc + (i?.retentionAmount || 0), 0).toFixed(2)}`
     ).join('\n');
 
     return `
@@ -57,7 +58,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ userProfile, companies, recentVoucher
     const context = getSystemContext();
     const response = await chatWithGemini(newHistory, userMsg, context);
     
-    setMessages(prev => [...prev, { role: 'model', content: response || "Error." }]);
+    setMessages(prev => [...prev, { role: 'model', content: response || "Error al obtener respuesta de la IA." }]);
     setIsLoading(false);
   };
 

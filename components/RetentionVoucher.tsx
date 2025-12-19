@@ -10,13 +10,13 @@ interface Props {
 
 const RetentionVoucher: React.FC<Props> = ({ data }) => {
   const contentRef = useRef<HTMLDivElement>(null);
-  const items = data.items || [];
-  const totalBase = items.reduce((acc, item) => acc + item.taxBase, 0);
-  const totalTax = items.reduce((acc, item) => acc + item.taxAmount, 0);
-  const totalRetained = items.reduce((acc, item) => acc + item.retentionAmount, 0);
-  const totalPurchase = items.reduce((acc, item) => acc + item.totalAmount, 0);
+  const items = data?.items || [];
+  const totalBase = items.reduce((acc, item) => acc + (item.taxBase || 0), 0);
+  const totalTax = items.reduce((acc, item) => acc + (item.taxAmount || 0), 0);
+  const totalRetained = items.reduce((acc, item) => acc + (item.retentionAmount || 0), 0);
+  const totalPurchase = items.reduce((acc, item) => acc + (item.totalAmount || 0), 0);
 
-  const fiscalPeriodSafe = data.fiscalPeriod || '';
+  const fiscalPeriodSafe = data?.fiscalPeriod || '';
   const [fiscalYear, fiscalMonth] = fiscalPeriodSafe.split(' ');
 
   const handleDownloadPdf = async () => {
@@ -46,6 +46,8 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
       alert("Error generando el PDF.");
     }
   };
+
+  if (!data) return <div className="p-10 text-center text-slate-400">Error: No hay datos para mostrar</div>;
 
   return (
     <div className="w-full flex flex-col items-center">
@@ -77,7 +79,7 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
           <div className="flex-1 leading-snug">
              LEY I.V.A. ART. 11 "SERAN RESPONSABLES DEL PAGO DE IMPUESTO EN CALIDAD DE AGENTES DE RETENCION LOS COMPRADORES O ADQUIRIENTES DE DETERMINADOS BIENES MUEBLES Y LOS RECEPTORES DE CIERTOS SERVICIOS A QUIENES LA ADMINISTRACION TRIBUTARIA DESIGNE COMO TAL.
           </div>
-          {data.company.logoUrl && (
+          {data.company?.logoUrl && (
               <img src={data.company.logoUrl} alt="Logo" className="h-10 w-auto object-contain max-w-[120px]" />
           )}
         </div>
@@ -85,45 +87,45 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
         <div className="flex justify-end gap-2 mb-3">
           <div className="border border-black px-1 py-0.5 w-40">
             <div className="font-bold border-b border-black mb-0.5">0.- NRO. DE COMPROBANTE:</div>
-            <div className="text-center text-sm font-bold">{data.voucherNumber}</div>
+            <div className="text-center text-sm font-bold">{data.voucherNumber || '000000'}</div>
           </div>
           <div className="border border-black px-1 py-0.5 w-20">
             <div className="font-bold border-b border-black mb-0.5">1.- FECHA:</div>
-            <div className="text-center">{data.date}</div>
+            <div className="text-center">{data.date || '--/--/----'}</div>
           </div>
         </div>
 
         <div className="flex gap-2 mb-1">
           <div className="border border-black px-1 py-0.5 flex-grow">
             <div className="font-bold border-b border-gray-300 mb-0.5">2.- NOMBRE O RAZON SOCIAL DEL AGENTE DE RETENCION:</div>
-            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.company.name}</div>
+            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.company?.name || 'N/A'}</div>
           </div>
           <div className="border border-black px-1 py-0.5 w-1/3">
             <div className="font-bold border-b border-gray-300 mb-0.5">3.- REGISTRO DE INFORMACION FISCAL DEL AGENTE DE RETENCION:</div>
-            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.company.rif}</div>
+            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.company?.rif || 'N/A'}</div>
           </div>
            <div className="border border-black px-1 py-0.5 w-28">
             <div className="font-bold border-b border-gray-300 mb-0.5">4.- PERIODO FISCAL:</div>
             <div className="text-center">
-               <span className="mr-2">{fiscalYear}</span>
-               <span>{fiscalMonth}</span>
+               <span className="mr-2">{fiscalYear || '----'}</span>
+               <span>{fiscalMonth || '--'}</span>
             </div>
           </div>
         </div>
 
         <div className="border border-black px-1 py-0.5 mb-3">
           <div className="font-bold border-b border-gray-300 mb-0.5">5.- DIRECCION DEL AGENTE DE RETENCION:</div>
-          <div className="uppercase py-0.5 text-[8px]">{data.company.address}</div>
+          <div className="uppercase py-0.5 text-[8px]">{data.company?.address || 'Sin dirección registrada'}</div>
         </div>
 
         <div className="flex gap-2 mb-4">
           <div className="border border-black px-1 py-0.5 flex-grow">
             <div className="font-bold border-b border-gray-300 mb-0.5">6.- NOMBRE O RAZON SOCIAL DEL SUJETO RETENIDO:</div>
-            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.supplier.name}</div>
+            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.supplier?.name || 'N/A'}</div>
           </div>
           <div className="border border-black px-1 py-0.5 w-1/3">
             <div className="font-bold border-b border-gray-300 mb-0.5">7.- REGISTRO DE INFORMACION FISCAL DEL SUJETO RETENIDO</div>
-            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.supplier.rif}</div>
+            <div className="uppercase font-bold text-center py-0.5 text-xs">{data.supplier?.rif || 'N/A'}</div>
           </div>
         </div>
 
@@ -195,7 +197,7 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
           <div className="text-center w-full md:w-64">
              <div className="border-b border-black mb-1 h-12 flex items-end justify-center relative">
                 <div className="absolute top-0 left-0 text-gray-300 text-3xl font-script transform -rotate-12 opacity-50 whitespace-nowrap overflow-hidden max-w-full">
-                   {data.company.name.substring(0, 20)}
+                   {data.company?.name?.substring(0, 20) || ''}
                 </div>
              </div>
              <div className="text-[8px] font-bold">FIRMA Y SELLO DEL AGENTE DE RETENCION</div>
