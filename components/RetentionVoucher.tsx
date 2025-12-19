@@ -1,3 +1,4 @@
+
 import React, { useRef } from 'react';
 import { RetentionVoucher as VoucherType } from '../types';
 import jsPDF from 'jspdf';
@@ -15,7 +16,6 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
   const totalRetained = items.reduce((acc, item) => acc + item.retentionAmount, 0);
   const totalPurchase = items.reduce((acc, item) => acc + item.totalAmount, 0);
 
-  // Safely handle fiscal period splitting
   const fiscalPeriodSafe = data.fiscalPeriod || '';
   const [fiscalYear, fiscalMonth] = fiscalPeriodSafe.split(' ');
 
@@ -24,7 +24,7 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
     
     try {
       const canvas = await html2canvas(contentRef.current, {
-        scale: 3, // Higher resolution for crisp text
+        scale: 3,
         useCORS: true, 
         logging: false
       });
@@ -43,14 +43,23 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
       pdf.save(`Comprobante_${data.voucherNumber}.pdf`);
     } catch (error) {
       console.error("PDF generation failed", error);
-      alert("Error generando el PDF. Intente imprimir usando el navegador.");
+      alert("Error generando el PDF.");
     }
   };
 
   return (
     <div className="w-full flex flex-col items-center">
-      {/* Action Button for PDF - only visible in web view */}
-      <div className="w-full max-w-[210mm] flex justify-end mb-2 no-print">
+      <div className="w-full max-w-[210mm] flex justify-end gap-3 mb-2 no-print">
+         {data.invoiceUrl && (
+             <a 
+               href={data.invoiceUrl} 
+               target="_blank" 
+               rel="noopener noreferrer"
+               className="bg-emerald-600 text-white px-3 py-1.5 rounded shadow hover:bg-emerald-700 flex items-center gap-2 text-sm"
+             >
+               <span className="material-icons text-sm">visibility</span> Ver Respaldo
+             </a>
+         )}
          <button 
            onClick={handleDownloadPdf}
            className="bg-blue-600 text-white px-3 py-1.5 rounded shadow hover:bg-blue-700 flex items-center gap-2 text-sm"
@@ -64,8 +73,6 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
         id="voucher-content"
         className="bg-white p-5 w-full max-w-[210mm] text-[9px] leading-tight font-sans text-black border border-gray-200 shadow-lg print:shadow-none print:border-none print:w-full print:max-w-none box-border mx-auto"
       >
-        
-        {/* Header Law Reference */}
         <div className="mb-3 text-[9px] font-semibold text-justify flex justify-between items-start gap-4">
           <div className="flex-1 leading-snug">
              LEY I.V.A. ART. 11 "SERAN RESPONSABLES DEL PAGO DE IMPUESTO EN CALIDAD DE AGENTES DE RETENCION LOS COMPRADORES O ADQUIRIENTES DE DETERMINADOS BIENES MUEBLES Y LOS RECEPTORES DE CIERTOS SERVICIOS A QUIENES LA ADMINISTRACION TRIBUTARIA DESIGNE COMO TAL.
@@ -75,7 +82,6 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
           )}
         </div>
 
-        {/* Top Meta Data */}
         <div className="flex justify-end gap-2 mb-3">
           <div className="border border-black px-1 py-0.5 w-40">
             <div className="font-bold border-b border-black mb-0.5">0.- NRO. DE COMPROBANTE:</div>
@@ -87,7 +93,6 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
           </div>
         </div>
 
-        {/* Agent Info */}
         <div className="flex gap-2 mb-1">
           <div className="border border-black px-1 py-0.5 flex-grow">
             <div className="font-bold border-b border-gray-300 mb-0.5">2.- NOMBRE O RAZON SOCIAL DEL AGENTE DE RETENCION:</div>
@@ -106,13 +111,11 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
           </div>
         </div>
 
-        {/* Agent Address */}
         <div className="border border-black px-1 py-0.5 mb-3">
           <div className="font-bold border-b border-gray-300 mb-0.5">5.- DIRECCION DEL AGENTE DE RETENCION:</div>
           <div className="uppercase py-0.5 text-[8px]">{data.company.address}</div>
         </div>
 
-        {/* Supplier Info */}
         <div className="flex gap-2 mb-4">
           <div className="border border-black px-1 py-0.5 flex-grow">
             <div className="font-bold border-b border-gray-300 mb-0.5">6.- NOMBRE O RAZON SOCIAL DEL SUJETO RETENIDO:</div>
@@ -124,58 +127,6 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
           </div>
         </div>
 
-        {/* Mobile Cards View (Visible on mobile, hidden on print/desktop) */}
-        <div className="block md:hidden print:hidden space-y-4 mb-6">
-            <h3 className="font-bold text-xs border-b pb-1 text-gray-500 uppercase tracking-wider">Detalle de Facturas ({items.length})</h3>
-            {items.map((item, index) => (
-                <div key={item.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    {/* Card Header */}
-                    <div className="bg-slate-50 p-3 border-b border-gray-100 flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                             <div className="bg-blue-100 text-blue-600 p-1.5 rounded-md">
-                                <span className="material-icons text-[14px] leading-none">receipt_long</span>
-                             </div>
-                             <div>
-                                 <p className="font-bold text-gray-800 text-xs">Factura {item.invoiceNumber}</p>
-                                 <p className="text-[9px] text-gray-500">Ctrl: {item.controlNumber}</p>
-                             </div>
-                        </div>
-                        <div className="text-right">
-                             <span className="text-[10px] font-medium text-gray-600 block">{item.date}</span>
-                             <span className="inline-block text-[8px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full mt-0.5">Op #{index + 1}</span>
-                        </div>
-                    </div>
-
-                    {/* Card Body */}
-                    <div className="p-3">
-                         <div className="grid grid-cols-2 gap-y-3 gap-x-2 mb-3">
-                             <div>
-                                 <p className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide">Base Imponible</p>
-                                 <p className="text-gray-700 text-xs font-medium">{item.taxBase.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
-                             </div>
-                             <div>
-                                 <p className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide">Total Compra</p>
-                                 <p className="text-gray-900 text-xs font-bold">{item.totalAmount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
-                             </div>
-                         </div>
-                         
-                         {/* Card Footer / Highlights */}
-                         <div className="flex items-center justify-between pt-2 border-t border-dashed border-gray-200">
-                             <div className="flex flex-col">
-                                <span className="text-[9px] text-gray-500">IVA ({item.taxRate}%)</span>
-                                <span className="text-gray-700 text-xs">{item.taxAmount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
-                             </div>
-                             <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-                                <span className="text-[9px] text-blue-700 font-bold uppercase tracking-tight">Retenido ({item.retentionRate}%)</span>
-                                <span className="text-blue-800 font-extrabold text-sm">{item.retentionAmount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
-                             </div>
-                         </div>
-                    </div>
-                </div>
-            ))}
-        </div>
-
-        {/* Main Table (Hidden on mobile, visible on print/desktop) */}
         <div className="mb-4 hidden md:block print:block">
           <table className="w-full border-collapse border border-black text-center text-[8px]">
             <thead>
@@ -218,25 +169,6 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
                   <td className="border border-black p-0.5 text-right font-bold">{item.retentionAmount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                 </tr>
               ))}
-               {/* Empty rows filler */}
-               {Array.from({ length: Math.max(0, 3 - items.length) }).map((_, i) => (
-                 <tr key={`empty-${i}`}>
-                   <td className="border border-black p-0.5">&nbsp;</td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                   <td className="border border-black p-0.5"></td>
-                 </tr>
-               ))}
             </tbody>
             <tfoot>
                <tr className="font-bold">
@@ -259,7 +191,6 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
            </div>
         </div>
 
-        {/* Signatures */}
         <div className="flex flex-col md:flex-row justify-between items-end mt-8 px-6 gap-8 md:gap-0">
           <div className="text-center w-full md:w-64">
              <div className="border-b border-black mb-1 h-12 flex items-end justify-center relative">

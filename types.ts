@@ -8,7 +8,7 @@ export interface UserProfile {
   last_name?: string;
   phone?: string;
   role: UserRole;
-  admin_id?: string; // ID del administrador propietario si es un subusuario
+  admin_id?: string;
 }
 
 export interface Company {
@@ -16,15 +16,16 @@ export interface Company {
   name: string;
   rif: string;
   address: string;
-  retentionPercentage: 75 | 100;
   logoUrl?: string;
   lastCorrelationNumber?: number;
 }
 
 export interface Supplier {
-  id?: string;
+  id: string;
+  user_id: string;
   name: string;
   rif: string;
+  address?: string;
 }
 
 export interface InvoiceItem {
@@ -47,8 +48,11 @@ export interface InvoiceItem {
 export interface RetentionVoucher {
   id: string;
   voucherNumber: string;
+  controlNumber?: string;
+  invoiceUrl?: string;
   date: string;
   fiscalPeriod: string;
+  retentionPercentage: number;
   company: Company;
   supplier: Supplier;
   items: InvoiceItem[];
@@ -62,5 +66,6 @@ export enum AppRoute {
   VIEW_RETENTION = 'view_retention',
   HISTORY = 'history',
   USER_MANAGEMENT = 'user_management',
-  PROFILE = 'profile'
+  PROFILE = 'profile',
+  SUPPLIERS = 'suppliers'
 }

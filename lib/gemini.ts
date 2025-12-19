@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 const getAiClient = () => {
@@ -68,7 +69,7 @@ export const analyzeInvoiceImage = async (base64Image: string): Promise<string> 
     if (!ai) return "Error config";
 
     try {
-        // Using gemini-3-pro-preview for high accuracy image reasoning as requested
+        // Using gemini-3-pro-preview for high accuracy image reasoning
         const result = await ai.models.generateContent({
             model: 'gemini-3-pro-preview', 
             contents: {
@@ -80,27 +81,27 @@ export const analyzeInvoiceImage = async (base64Image: string): Promise<string> 
                         }
                     },
                     {
-                        text: `Analiza esta imagen de una factura venezolana (SENIAT).
-                        Tu tarea es extraer los datos con extrema precisión para llenar un formulario de retención de IVA.
+                        text: `Analiza esta imagen de una factura o ticket fiscal venezolano (SENIAT).
+                        Tu tarea es extraer los datos con extrema precisión para un formulario de retención de IVA.
                         
                         Extrae la siguiente información en formato JSON estricto:
                         { 
-                          "invoiceNumber": "Número de Factura (busca N° Factura, Factura)", 
-                          "controlNumber": "Número de Control (busca N° Control, Control)", 
+                          "invoiceNumber": "Número de Factura (busque N° Factura, Factura, o N° de Documento)", 
+                          "controlNumber": "Número de Control. REGLA CRÍTICA: En facturas impresas busque 'N° de Control' o 'Control'. En TICKETS DE IMPRESORA FISCAL, el número de control es el código que empieza con la letra 'Z' seguido de letras y números (ej: Z7C7016648), que suele estar en la parte inferior o cerca del final del ticket.",
                           "supplierName": "Nombre o Razón Social del proveedor/emisor",
                           "supplierRif": "RIF del proveedor (Formato J-12345678-9)",
-                          "date": "YYYY-MM-DD (convierte la fecha encontrada a este formato)",
-                          "totalAmount": number (monto total de la factura incluyendo IVA),
-                          "taxBase": number (base imponible o subtotal sobre el que aplica el IVA),
+                          "date": "YYYY-MM-DD (convierte la fecha encontrada a este formato ISO)",
+                          "totalAmount": number (monto total de la factura),
+                          "taxBase": number (base imponible),
                           "taxAmount": number (monto del IVA),
                           "taxRate": number (porcentaje alícuota, usualmente 16)
                         }
                         
-                        Reglas:
-                        1. Si no encuentras un valor específico, usa null o 0.
+                        Reglas adicionales:
+                        1. Si no encuentras un valor específico, usa null o string vacío.
                         2. Prioriza la exactitud de los montos numéricos.
-                        3. Elimina cualquier símbolo de moneda (Bs, USD) de los números.
-                        4. Verifica que taxBase + taxAmount sea aproximadamente igual a totalAmount (pueden haber exentos).`
+                        3. Elimina símbolos de moneda (Bs, USD) de los números.
+                        4. El número de control 'Z' es fundamental para tickets fiscales.`
                     }
                 ]
             },
