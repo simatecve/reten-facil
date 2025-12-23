@@ -5,7 +5,7 @@ import { User } from '@supabase/supabase-js';
 import LandingPage from './components/LandingPage';
 import ChatBot from './components/ChatBot';
 import RetentionVoucher from './components/RetentionVoucher';
-import { Company, InvoiceItem, AppRoute, RetentionVoucher as VoucherType, UserProfile, UserRole, Supplier } from './types';
+import { Company, InvoiceItem, AppRoute, RetentionVoucher as VoucherType, UserProfile, UserRole, Supplier, CommunityTopic, CommunityComment } from './types';
 import { analyzeInvoiceImage } from './lib/gemini';
 
 // --- Componentes de Interfaz ---
@@ -27,6 +27,7 @@ const Sidebar = ({
     { route: AppRoute.CREATE_RETENTION, icon: 'add_circle', label: 'Nueva Retención', show: true },
     { route: AppRoute.HISTORY, icon: 'history', label: 'Historial', show: true },
     { route: AppRoute.SUPPLIERS, icon: 'contacts', label: 'Proveedores', show: true },
+    { route: AppRoute.COMMUNITY, icon: 'forum', label: 'Comunidad', show: true },
     { route: AppRoute.CREATE_COMPANY, icon: 'business', label: 'Empresas', show: isAdmin },
     { route: AppRoute.USER_MANAGEMENT, icon: 'group_add', label: 'Equipo', show: isAdmin }
   ].filter(item => item.show);
@@ -84,7 +85,7 @@ const MobileBottomNav = ({ currentRoute, setRoute, resetStates, role }: any) => 
     { route: AppRoute.DASHBOARD, icon: 'grid_view', label: 'Inicio', show: isAdmin },
     { route: AppRoute.HISTORY, icon: 'history', label: 'Historial', show: true },
     { route: AppRoute.CREATE_RETENTION, icon: 'add_circle', label: 'Nueva', show: true, special: true },
-    { route: AppRoute.SUPPLIERS, icon: 'contacts', label: 'Provs', show: true },
+    { route: AppRoute.COMMUNITY, icon: 'forum', label: 'Comu', show: true },
     { route: AppRoute.PROFILE, icon: 'person', label: 'Perfil', show: true },
   ].filter(t => t.show);
 
@@ -133,6 +134,13 @@ const App: React.FC = () => {
   const [generatedVouchers, setGeneratedVouchers] = useState<VoucherType[]>([]);
   const [currentVoucher, setCurrentVoucher] = useState<VoucherType | null>(null);
   const [subUsers, setSubUsers] = useState<UserProfile[]>([]);
+
+  // Community States
+  const [topics, setTopics] = useState<CommunityTopic[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState<CommunityTopic | null>(null);
+  const [topicComments, setTopicComments] = useState<CommunityComment[]>([]);
+  const [isCreatingTopic, setIsCreatingTopic] = useState(false);
+  const [isPostingComment, setIsPostingComment] = useState(false);
 
   // Wizard States
   const [wizStep, setWizStep] = useState(1);
@@ -223,6 +231,65 @@ const App: React.FC = () => {
       const { data: subs } = await supabase.from('profiles').select('*').eq('admin_id', userProfile.id);
       if (subs) setSubUsers(subs);
     }
+
+    // Cargar Comunidad
+    fetchCommunityTopics();
+  };
+
+  const fetchCommunityTopics = async () => {
+    const { data } = await supabase
+      .from('community_topics')
+      .select('*, profiles(first_name, role)')
+      .order('created_at', { ascending: false });
+    if (data) setTopics(data as any);
+  };
+
+  const fetchTopicComments = async (topicId: string) => {
+    const { data } = await supabase
+      .from('community_comments')
+      .select('*, profiles(first_name, role)')
+      .eq('topic_id', topicId)
+      .order('created_at', { ascending: true });
+    if (data) setTopicComments(data as any);
+  };
+
+  const handleCreateTopic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile) return;
+    const fd = new FormData(e.target as HTMLFormElement);
+    
+    const { error } = await supabase.from('community_topics').insert([{
+      user_id: userProfile.id,
+      title: fd.get('title'),
+      content: fd.get('content'),
+      category: fd.get('category')
+    }]);
+
+    if (!error) {
+      setIsCreatingTopic(false);
+      fetchCommunityTopics();
+    }
+  };
+
+  const handlePostComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile || !selectedTopic) return;
+    const fd = new FormData(e.target as HTMLFormElement);
+    const content = fd.get('comment') as string;
+    if (!content.trim()) return;
+
+    setIsPostingComment(true);
+    const { error } = await supabase.from('community_comments').insert([{
+      topic_id: selectedTopic.id,
+      user_id: userProfile.id,
+      content
+    }]);
+
+    if (!error) {
+      (e.target as HTMLFormElement).reset();
+      fetchTopicComments(selectedTopic.id);
+    }
+    setIsPostingComment(false);
   };
 
   useEffect(() => {
@@ -633,6 +700,7 @@ const App: React.FC = () => {
     setEditingSupplier(null);
     setEditingVoucherId(null);
     setIsEditingVoucherNum(false);
+    setSelectedTopic(null);
   };
 
   const getPageTitle = (r: AppRoute) => {
@@ -641,6 +709,7 @@ const App: React.FC = () => {
       case AppRoute.CREATE_RETENTION: return 'Nueva Retención';
       case AppRoute.HISTORY: return 'Historial';
       case AppRoute.SUPPLIERS: return 'Proveedores';
+      case AppRoute.COMMUNITY: return 'Comunidad & Feedback';
       case AppRoute.PROFILE: return 'Mi Perfil';
       case AppRoute.USER_MANAGEMENT: return 'Mi Equipo';
       case AppRoute.CREATE_COMPANY: return 'Empresas';
@@ -1036,6 +1105,170 @@ const App: React.FC = () => {
                 </div>
               )}
            </div>
+        )}
+
+        {/* COMUNIDAD Y FEEDBACK */}
+        {route === AppRoute.COMMUNITY && (
+          <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
+             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-3xl font-black">Comunidad & Feedback</h2>
+                  <p className="text-slate-500">Comparte dudas, sugiere mejoras o reporta problemas.</p>
+                </div>
+                {!selectedTopic && (
+                  <button onClick={() => setIsCreatingTopic(true)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg">
+                    <span className="material-icons">add_comment</span> Nuevo Tema
+                  </button>
+                )}
+                {selectedTopic && (
+                  <button onClick={() => setSelectedTopic(null)} className="text-slate-400 hover:text-slate-900 font-bold flex items-center gap-2">
+                    <span className="material-icons">arrow_back</span> Volver al Foro
+                  </button>
+                )}
+             </header>
+
+             {isCreatingTopic && (
+               <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 animate-fade-in-up">
+                  <h3 className="font-bold text-xl mb-6">Publicar en la Comunidad</h3>
+                  <form onSubmit={handleCreateTopic} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 block mb-1">Título</label>
+                          <input required name="title" placeholder="Ej: Sugerencia para el reporte mensual" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                       </div>
+                       <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 block mb-1">Categoría</label>
+                          <select name="category" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold">
+                             <option value="General">💬 General</option>
+                             <option value="Sugerencia">💡 Sugerencia</option>
+                             <option value="Problema">⚠️ Problema / Error</option>
+                             <option value="Fiscal">⚖️ Duda Fiscal</option>
+                          </select>
+                       </div>
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 block mb-1">Contenido</label>
+                        <textarea required name="content" placeholder="Describe tu tema en detalle..." className="w-full bg-slate-50 border-none p-4 rounded-2xl h-40 focus:ring-2 focus:ring-blue-500 outline-none font-medium" />
+                    </div>
+                    <div className="flex gap-4">
+                       <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-blue-700 shadow-lg">Publicar Tema</button>
+                       <button type="button" onClick={() => setIsCreatingTopic(false)} className="bg-slate-100 text-slate-500 px-8 py-4 rounded-2xl font-bold">Cancelar</button>
+                    </div>
+                  </form>
+               </div>
+             )}
+
+             {!selectedTopic && !isCreatingTopic && (
+               <div className="grid grid-cols-1 gap-4">
+                  {topics.map(t => (
+                    <button 
+                      key={t.id} 
+                      onClick={() => { setSelectedTopic(t); fetchTopicComments(t.id); }}
+                      className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-start md:items-center gap-6 group text-left w-full"
+                    >
+                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
+                         t.category === 'Problema' ? 'bg-red-50 text-red-500' :
+                         t.category === 'Sugerencia' ? 'bg-amber-50 text-amber-500' :
+                         t.category === 'Fiscal' ? 'bg-purple-50 text-purple-500' : 'bg-blue-50 text-blue-500'
+                       }`}>
+                          <span className="material-icons text-3xl">
+                             {t.category === 'Problema' ? 'error_outline' :
+                              t.category === 'Sugerencia' ? 'lightbulb' :
+                              t.category === 'Fiscal' ? 'gavel' : 'chat_bubble_outline'}
+                          </span>
+                       </div>
+                       <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                               t.category === 'Problema' ? 'border-red-100 text-red-600' :
+                               t.category === 'Sugerencia' ? 'border-amber-100 text-amber-600' :
+                               t.category === 'Fiscal' ? 'border-purple-100 text-purple-600' : 'border-blue-100 text-blue-600'
+                             }`}>
+                                {t.category}
+                             </span>
+                             <span className="text-slate-400 text-xs font-bold">• {new Date(t.created_at).toLocaleDateString()}</span>
+                          </div>
+                          <h4 className="font-black text-slate-800 text-lg line-clamp-1 group-hover:text-blue-600 transition-colors">{t.title}</h4>
+                          <p className="text-slate-500 text-sm line-clamp-1">{t.content}</p>
+                       </div>
+                       <div className="flex items-center gap-4 text-slate-400 font-bold text-xs uppercase tracking-widest shrink-0">
+                          <span className="flex items-center gap-1"><span className="material-icons text-sm">person</span> {t.profiles?.first_name}</span>
+                          <span className="flex items-center gap-1"><span className="material-icons text-sm">chevron_right</span></span>
+                       </div>
+                    </button>
+                  ))}
+                  {topics.length === 0 && (
+                    <div className="py-20 text-center bg-white rounded-[3rem] border border-dashed border-slate-200">
+                       <span className="material-icons text-6xl text-slate-100 mb-4">forum</span>
+                       <p className="text-slate-400 font-bold">Sé el primero en iniciar una conversación.</p>
+                    </div>
+                  )}
+               </div>
+             )}
+
+             {selectedTopic && (
+               <div className="space-y-8 animate-fade-in-up">
+                  {/* Tema Original */}
+                  <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+                     <div className="flex items-center gap-3 mb-4">
+                        <span className="text-[10px] font-black uppercase px-3 py-1 bg-blue-50 text-blue-600 rounded-full">{selectedTopic.category}</span>
+                        <span className="text-slate-400 text-xs font-bold">{new Date(selectedTopic.created_at).toLocaleString()}</span>
+                     </div>
+                     <h3 className="text-3xl font-black text-slate-900 mb-4">{selectedTopic.title}</h3>
+                     <p className="text-slate-700 leading-relaxed whitespace-pre-wrap text-lg">{selectedTopic.content}</p>
+                     <div className="mt-8 pt-6 border-t flex items-center gap-3">
+                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-black text-slate-500">
+                           {selectedTopic.profiles?.first_name?.[0]}
+                        </div>
+                        <div>
+                           <p className="text-sm font-black text-slate-900">{selectedTopic.profiles?.first_name}</p>
+                           <p className="text-[10px] text-slate-400 font-bold uppercase">{selectedTopic.profiles?.role}</p>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Hilo de Comentarios */}
+                  <div className="space-y-4 pl-0 md:pl-12">
+                     <h4 className="font-black text-slate-500 text-xs uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="material-icons text-sm">comment</span> Respuestas ({topicComments.length})
+                     </h4>
+                     
+                     {topicComments.map(c => (
+                        <div key={c.id} className={`p-6 rounded-[2rem] border animate-fade-in-up ${c.profiles?.role === 'admin' ? 'bg-blue-50/50 border-blue-100 shadow-sm' : 'bg-white border-slate-100 shadow-xs'}`}>
+                           <div className="flex justify-between items-start mb-3">
+                              <div className="flex items-center gap-2">
+                                 <span className="font-black text-slate-900 text-sm">{c.profiles?.first_name}</span>
+                                 {c.profiles?.role === 'admin' && <span className="text-[8px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-black uppercase">Staff</span>}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-bold">{new Date(c.created_at).toLocaleString()}</span>
+                           </div>
+                           <p className="text-slate-700 text-sm leading-relaxed">{c.content}</p>
+                        </div>
+                     ))}
+
+                     {/* Formulario de Respuesta */}
+                     <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl mt-8">
+                        <form onSubmit={handlePostComment} className="flex flex-col md:flex-row gap-4">
+                           <textarea 
+                             required
+                             name="comment"
+                             placeholder="Escribe una respuesta o ayuda al colega..." 
+                             className="flex-1 bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium" 
+                           />
+                           <button 
+                             type="submit" 
+                             disabled={isPostingComment}
+                             className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-lg flex items-center justify-center gap-2 h-fit"
+                           >
+                              {isPostingComment ? '...' : <span className="material-icons">send</span>} 
+                              Responder
+                           </button>
+                        </form>
+                     </div>
+                  </div>
+               </div>
+             )}
+          </div>
         )}
 
         {/* MI EQUIPO (Gestión de Equipo) */}

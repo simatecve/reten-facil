@@ -47,6 +47,32 @@ export interface InvoiceItem {
   retentionAmount: number;
 }
 
+export interface CommunityTopic {
+  id: string;
+  user_id: string;
+  title: string;
+  content: string;
+  category: 'Problema' | 'Sugerencia' | 'Fiscal' | 'General';
+  created_at: string;
+  profiles?: {
+    first_name: string;
+    role: string;
+  };
+  comment_count?: number;
+}
+
+export interface CommunityComment {
+  id: string;
+  topic_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  profiles?: {
+    first_name: string;
+    role: string;
+  };
+}
+
 export interface VoucherAuditLog {
   id: string;
   retention_id: string;
@@ -78,5 +104,6 @@ export enum AppRoute {
   HISTORY = 'history',
   USER_MANAGEMENT = 'user_management',
   PROFILE = 'profile',
-  SUPPLIERS = 'suppliers'
+  SUPPLIERS = 'suppliers',
+  COMMUNITY = 'community'
 }
