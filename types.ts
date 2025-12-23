@@ -26,6 +26,7 @@ export interface Supplier {
   name: string;
   rif: string;
   address?: string;
+  defaultRetentionRate?: 75 | 100;
 }
 
 export interface InvoiceItem {

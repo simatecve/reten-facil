@@ -143,10 +143,12 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
 
-  // States for sub-users and profile
+  // States for sub-users, suppliers and profile
   const [isCreatingSubUser, setIsCreatingSubUser] = useState(false);
   const [editingSubUser, setEditingSubUser] = useState<UserProfile | null>(null);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false);
 
   // Form para nueva factura individual
   const [newItem, setNewItem] = useState<Partial<InvoiceItem>>({
@@ -267,7 +269,10 @@ const App: React.FC = () => {
         const data = JSON.parse(jsonStr);
         if (data) {
           const existing = suppliers.find(s => s.rif.replace(/\W/g, '').toUpperCase() === data.supplierRif?.replace(/\W/g, '').toUpperCase());
-          if (existing) setSelectedSupplier(existing);
+          if (existing) {
+              setSelectedSupplier(existing);
+              if (existing.defaultRetentionRate) setWizRetentionPercentage(existing.defaultRetentionRate);
+          }
           else setSelectedSupplier({ name: data.supplierName || '', rif: data.supplierRif || '', address: '' });
           
           setNewItem(prev => ({ 
@@ -357,6 +362,52 @@ const App: React.FC = () => {
     if (!error) { loadData(); alert("Empresa registrada"); (e.target as HTMLFormElement).reset(); }
   };
 
+  const handleDeleteCompany = async (id: string) => {
+    if (!window.confirm("¿Eliminar esta empresa? Esto podría afectar retenciones asociadas.")) return;
+    const { error } = await supabase.from('companies').delete().eq('id', id);
+    if (!error) loadData();
+    else alert(error.message);
+  };
+
+  const handleSaveSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile) return;
+    setIsSavingSupplier(true);
+    const adminId = userProfile.role === 'admin' ? userProfile.id : userProfile.admin_id;
+    const fd = new FormData(e.target as HTMLFormElement);
+    
+    const payload = {
+      user_id: adminId,
+      name: fd.get('name') as string,
+      rif: fd.get('rif') as string,
+      address: fd.get('address') as string,
+      defaultRetentionRate: parseInt(fd.get('defaultRetentionRate') as string) || 75
+    };
+
+    try {
+        if (editingSupplier) {
+            const { error } = await supabase.from('suppliers').update(payload).eq('id', editingSupplier.id);
+            if (error) throw error;
+            alert("Proveedor actualizado.");
+        } else {
+            const { error } = await supabase.from('suppliers').insert([payload]);
+            if (error) throw error;
+            alert("Proveedor registrado.");
+        }
+        loadData();
+        setEditingSupplier(null);
+        (e.target as HTMLFormElement).reset();
+    } catch (err: any) { alert(err.message); }
+    finally { setIsSavingSupplier(false); }
+  };
+
+  const handleDeleteSupplier = async (id: string) => {
+    if (!window.confirm("¿Eliminar este proveedor?")) return;
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    if (!error) loadData();
+    else alert(error.message);
+  };
+
   const handleCreateSubUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile || userProfile.role !== 'admin') return;
@@ -439,6 +490,7 @@ const App: React.FC = () => {
     setWizRetentionPercentage(75);
     setLastScannedFile(null);
     setEditingSubUser(null);
+    setEditingSupplier(null);
   };
 
   const getPageTitle = (r: AppRoute) => {
@@ -703,7 +755,10 @@ const App: React.FC = () => {
                         className="w-full bg-white border border-slate-200 p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
                         onChange={(e) => {
                           const s = suppliers.find(sup => sup.id === e.target.value);
-                          if (s) setSelectedSupplier(s);
+                          if (s) {
+                              setSelectedSupplier(s);
+                              if (s.defaultRetentionRate) setWizRetentionPercentage(s.defaultRetentionRate);
+                          }
                         }}
                         value={selectedSupplier?.id || ''}
                       >
@@ -938,33 +993,76 @@ const App: React.FC = () => {
 
         {/* PROVEEDORES */}
         {route === AppRoute.SUPPLIERS && (
-          <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+          <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
              <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-black">Mis Proveedores</h2>
-                <button 
-                  onClick={() => {
-                    const name = prompt("Nombre:");
-                    const rif = prompt("RIF:");
-                    if(name && rif) {
-                       supabase.from('suppliers').insert([{ user_id: userProfile?.id || userProfile?.admin_id, name, rif }]).then(() => loadData());
-                    }
-                  }}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2"
-                >
-                   <span className="material-icons">add</span> Nuevo Proveedor
-                </button>
+                <h2 className="text-3xl font-black">Gestión de Proveedores</h2>
              </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {suppliers.map(s => (
-                  <div key={s.id} className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm group">
-                     <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all mb-4">
-                        <span className="material-icons">person</span>
-                     </div>
-                     <h3 className="font-bold text-lg leading-tight">{s.name}</h3>
-                     <p className="text-blue-600 font-bold text-xs uppercase mt-1">RIF: {s.rif}</p>
-                     <p className="text-slate-400 text-xs mt-2 line-clamp-2">{s.address || 'Sin dirección registrada'}</p>
-                  </div>
-                ))}
+             
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                <div className="lg:col-span-1">
+                   <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                      <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
+                        <span className="material-icons text-blue-600">{editingSupplier ? 'edit' : 'add_circle'}</span>
+                        {editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+                      </h3>
+                      <form onSubmit={handleSaveSupplier} className="space-y-4">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Razón Social</label>
+                          <input required name="name" defaultValue={editingSupplier?.name} placeholder="Nombre de la empresa" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">RIF</label>
+                          <input required name="rif" defaultValue={editingSupplier?.rif} placeholder="J-12345678-0" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Dirección</label>
+                          <textarea name="address" defaultValue={editingSupplier?.address} placeholder="Dirección física" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold h-20" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Retención por Defecto</label>
+                          <select name="defaultRetentionRate" defaultValue={editingSupplier?.defaultRetentionRate || 75} className="w-full bg-slate-50 border-none p-4 rounded-2xl appearance-none font-bold outline-none">
+                             <option value="75">75% (General)</option>
+                             <option value="100">100% (Especial)</option>
+                          </select>
+                        </div>
+                        <button type="submit" disabled={isSavingSupplier} className="w-full bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg">
+                          {isSavingSupplier ? 'Guardando...' : editingSupplier ? 'Actualizar Proveedor' : 'Registrar Proveedor'}
+                        </button>
+                        {editingSupplier && (
+                          <button type="button" onClick={() => setEditingSupplier(null)} className="w-full bg-slate-200 text-slate-600 rounded-2xl font-bold py-3">Cancelar</button>
+                        )}
+                      </form>
+                   </div>
+                </div>
+
+                <div className="lg:col-span-2 space-y-4">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {suppliers.map(s => (
+                        <div key={s.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+                           <div className="flex justify-between items-start mb-4">
+                              <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+                                 <span className="material-icons text-xl">person</span>
+                              </div>
+                              <div className="flex gap-1">
+                                 <button onClick={() => setEditingSupplier(s)} className="w-8 h-8 bg-slate-50 text-slate-400 hover:bg-blue-600 hover:text-white rounded-lg transition-all flex items-center justify-center"><span className="material-icons text-xs">edit</span></button>
+                                 <button onClick={() => handleDeleteSupplier(s.id)} className="w-8 h-8 bg-slate-50 text-slate-400 hover:bg-red-600 hover:text-white rounded-lg transition-all flex items-center justify-center"><span className="material-icons text-xs">delete</span></button>
+                              </div>
+                           </div>
+                           <h3 className="font-bold text-slate-800 line-clamp-1">{s.name}</h3>
+                           <p className="text-blue-600 font-bold text-xs mt-1 uppercase">RIF: {s.rif}</p>
+                           <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase text-slate-400 bg-slate-50 px-2 py-1 rounded">Defecto: {s.defaultRetentionRate || 75}%</span>
+                              <span className="material-icons text-slate-200 text-sm">chevron_right</span>
+                           </div>
+                        </div>
+                      ))}
+                      {suppliers.length === 0 && (
+                        <div className="col-span-2 py-20 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
+                           <p className="text-slate-400 font-medium">No has registrado proveedores aún.</p>
+                        </div>
+                      )}
+                   </div>
+                </div>
              </div>
           </div>
         )}
@@ -986,16 +1084,42 @@ const App: React.FC = () => {
            <div className="max-w-4xl mx-auto space-y-12 animate-fade-in">
               <header>
                 <h2 className="text-3xl font-black">Gestión de Empresas</h2>
-                <p className="text-slate-500">Entidades emisoras bajo tu control.</p>
+                <p className="text-slate-500">Agentes de retención autorizados.</p>
               </header>
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <form onSubmit={handleCreateCompany} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <input required name="name" placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input required name="rif" placeholder="RIF" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <textarea required name="address" placeholder="Dirección Fiscal" className="w-full md:col-span-2 bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input required type="number" name="last_correlation_number" placeholder="Correlativo Inicial" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <button type="submit" className="bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all">Registrar Empresa</button>
-                </form>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 h-fit">
+                   <h3 className="font-bold text-lg mb-6">Nueva Empresa</h3>
+                   <form onSubmit={handleCreateCompany} className="space-y-4">
+                     <input required name="name" placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     <input required name="rif" placeholder="RIF (J-12345678-0)" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     <textarea required name="address" placeholder="Dirección Fiscal Completa" className="w-full bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     <input required type="number" name="last_correlation_number" placeholder="Próximo Correlativo" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     <button type="submit" className="w-full bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg">Registrar Empresa</button>
+                   </form>
+                </div>
+
+                <div className="space-y-4">
+                   <h3 className="font-bold text-lg mb-4">Empresas Registradas</h3>
+                   {companies.map(c => (
+                     <div key={c.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm group relative">
+                        <button 
+                          onClick={() => handleDeleteCompany(c.id)}
+                          className="absolute top-4 right-4 text-slate-300 hover:text-red-500 p-2"
+                        >
+                          <span className="material-icons text-sm">delete</span>
+                        </button>
+                        <h4 className="font-black text-slate-800 line-clamp-1 pr-8">{c.name}</h4>
+                        <p className="text-blue-600 font-bold text-xs mt-1 uppercase">RIF: {c.rif}</p>
+                        <p className="text-slate-400 text-[10px] font-bold mt-4 uppercase tracking-widest">Siguiente: {String(c.lastCorrelationNumber).padStart(8, '0')}</p>
+                     </div>
+                   ))}
+                   {companies.length === 0 && (
+                     <div className="py-20 text-center bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
+                        <p className="text-slate-400 text-sm">No hay empresas bajo este perfil.</p>
+                     </div>
+                   )}
+                </div>
               </div>
            </div>
         )}
