@@ -47,6 +47,15 @@ export interface InvoiceItem {
   retentionAmount: number;
 }
 
+export interface VoucherAuditLog {
+  id: string;
+  retention_id: string;
+  user_id: string;
+  old_value: string;
+  new_value: string;
+  created_at: string;
+}
+
 export interface RetentionVoucher {
   id: string;
   voucherNumber: string;

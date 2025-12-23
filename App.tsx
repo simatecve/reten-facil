@@ -143,6 +143,9 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
 
+  // Edit Mode State
+  const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
+
   // States for sub-users, suppliers and profile
   const [isCreatingSubUser, setIsCreatingSubUser] = useState(false);
   const [editingSubUser, setEditingSubUser] = useState<UserProfile | null>(null);
@@ -150,6 +153,11 @@ const App: React.FC = () => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
+
+  // Voucher Edit States (Voucher Number only)
+  const [isEditingVoucherNum, setIsEditingVoucherNum] = useState(false);
+  const [tempVoucherNum, setTempVoucherNum] = useState('');
+  const [isUpdatingVoucherNum, setIsUpdatingVoucherNum] = useState(false);
 
   // Form para nueva factura individual
   const [newItem, setNewItem] = useState<Partial<InvoiceItem>>({
@@ -310,8 +318,17 @@ const App: React.FC = () => {
 
     const now = new Date();
     const periodStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const nextNum = selectedCompany.lastCorrelationNumber || 1;
-    const voucherNumber = `${periodStr}${String(nextNum).padStart(8, '0')}`;
+    
+    let voucherNumber = '';
+    
+    // Si estamos editando, mantenemos el número original
+    if (editingVoucherId) {
+       const existing = generatedVouchers.find(v => v.id === editingVoucherId);
+       voucherNumber = existing?.voucherNumber || '';
+    } else {
+       const nextNum = selectedCompany.lastCorrelationNumber || 1;
+       voucherNumber = `${periodStr}${String(nextNum).padStart(8, '0')}`;
+    }
     
     let uploadedImageUrl = '';
     if (lastScannedFile) {
@@ -332,22 +349,101 @@ const App: React.FC = () => {
       items: wizItems,
       voucher_number: voucherNumber,
       control_number: wizItems[0].controlNumber,
-      invoice_url: uploadedImageUrl,
+      invoice_url: uploadedImageUrl || (editingVoucherId ? generatedVouchers.find(v => v.id === editingVoucherId)?.invoiceUrl : ''),
       retention_percentage: wizRetentionPercentage,
-      date: now.toISOString().split('T')[0],
-      fiscal_period: `${now.getFullYear()} ${String(now.getMonth()+1).padStart(2,'0')}`,
+      date: editingVoucherId ? generatedVouchers.find(v => v.id === editingVoucherId)?.date : now.toISOString().split('T')[0],
+      fiscal_period: editingVoucherId ? generatedVouchers.find(v => v.id === editingVoucherId)?.fiscalPeriod : `${now.getFullYear()} ${String(now.getMonth()+1).padStart(2,'0')}`,
       total_purchase: wizItems.reduce((acc, i) => acc + i.totalAmount, 0),
       total_tax: wizItems.reduce((acc, i) => acc + i.taxAmount, 0),
       total_retained: wizItems.reduce((acc, i) => acc + i.retentionAmount, 0)
     };
 
-    const { error } = await supabase.from('retentions').insert([payload]);
-    if (!error) {
-      await supabase.from('companies').update({ last_correlation_number: nextNum + 1 }).eq('id', selectedCompany.id);
+    let resultError;
+    if (editingVoucherId) {
+       const { error } = await supabase.from('retentions').update(payload).eq('id', editingVoucherId);
+       resultError = error;
+    } else {
+       const { error } = await supabase.from('retentions').insert([payload]);
+       resultError = error;
+       if (!error) {
+         await supabase.from('companies').update({ last_correlation_number: (selectedCompany.lastCorrelationNumber || 1) + 1 }).eq('id', selectedCompany.id);
+       }
+    }
+
+    if (!resultError) {
       loadData();
       setRoute(AppRoute.HISTORY);
       resetStates();
-    } else { alert(error.message); }
+      alert(editingVoucherId ? "Retención actualizada" : "Retención generada");
+    } else { 
+      alert(resultError.message); 
+    }
+  };
+
+  const handleEditVoucher = (voucher: VoucherType) => {
+    setEditingVoucherId(voucher.id);
+    setSelectedCompany(voucher.company);
+    setSelectedSupplier(voucher.supplier);
+    setWizItems(voucher.items);
+    setWizRetentionPercentage(voucher.retentionPercentage as 75 | 100);
+    setWizStep(3);
+    setRoute(AppRoute.CREATE_RETENTION);
+  };
+
+  const handleUpdateVoucherNumber = async () => {
+    if (!currentVoucher || !userProfile) return;
+    
+    // 1. Validar Formato (YYYYMM + 8 dígitos)
+    const voucherRegex = /^\d{14}$/;
+    if (!voucherRegex.test(tempVoucherNum)) {
+      return alert("El formato debe ser YYYYMMXXXXXXXX (14 dígitos numéricos).");
+    }
+
+    if (!window.confirm(`¿Estás seguro de cambiar el número del comprobante de ${currentVoucher.voucherNumber} a ${tempVoucherNum}? Esta acción quedará registrada.`)) return;
+
+    setIsUpdatingVoucherNum(true);
+    try {
+      // 2. Validar Unicidad en la misma empresa
+      const { data: existing, error: checkError } = await supabase
+        .from('retentions')
+        .select('id')
+        .eq('company_id', currentVoucher.company.id)
+        .eq('voucher_number', tempVoucherNum)
+        .not('id', 'eq', currentVoucher.id);
+      
+      if (checkError) throw checkError;
+      if (existing && existing.length > 0) {
+        throw new Error("Este número de comprobante ya existe para esta empresa.");
+      }
+
+      // 3. Actualizar Comprobante
+      const { error: updateError } = await supabase
+        .from('retentions')
+        .update({ voucher_number: tempVoucherNum })
+        .eq('id', currentVoucher.id);
+      
+      if (updateError) throw updateError;
+
+      // 4. Registrar Auditoría
+      await supabase.from('retention_audit_logs').insert([{
+        retention_id: currentVoucher.id,
+        user_id: userProfile.id,
+        old_value: currentVoucher.voucherNumber,
+        new_value: tempVoucherNum
+      }]);
+
+      alert("Número de comprobante actualizado con éxito.");
+      setIsEditingVoucherNum(false);
+      
+      // 5. Refrescar datos
+      const updatedVoucher = { ...currentVoucher, voucherNumber: tempVoucherNum };
+      setCurrentVoucher(updatedVoucher);
+      loadData();
+    } catch (err: any) {
+      alert("Error al actualizar: " + err.message);
+    } finally {
+      setIsUpdatingVoucherNum(false);
+    }
   };
 
   const handleCreateCompany = async (e: React.FormEvent) => {
@@ -535,6 +631,8 @@ const App: React.FC = () => {
     setLastScannedFile(null);
     setEditingSubUser(null);
     setEditingSupplier(null);
+    setEditingVoucherId(null);
+    setIsEditingVoucherNum(false);
   };
 
   const getPageTitle = (r: AppRoute) => {
@@ -748,7 +846,7 @@ const App: React.FC = () => {
            <div className="max-w-4xl mx-auto animate-fade-in">
               <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <h2 className="hidden md:block text-3xl font-black">Nueva Retención</h2>
+                  <h2 className="hidden md:block text-3xl font-black">{editingVoucherId ? 'Editar Retención' : 'Nueva Retención'}</h2>
                   <p className="text-slate-500">Paso {wizStep} de 3</p>
                 </div>
                 <div className="flex gap-2">
@@ -926,9 +1024,12 @@ const App: React.FC = () => {
                               <p className="text-3xl font-black text-slate-900">{wizItems.reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE')} <span className="text-lg text-slate-400">Bs</span></p>
                               <p className="text-xs text-blue-600 font-bold mt-1 uppercase tracking-tight">{wizItems.length} facturas incluidas</p>
                            </div>
-                           <button onClick={generateVoucher} className="w-full md:w-auto bg-slate-900 text-white px-12 py-5 rounded-[2rem] font-black shadow-2xl shadow-blue-500/30 hover:bg-blue-600 transition-all flex items-center justify-center gap-2">
-                             <span className="material-icons">task_alt</span> Emitir Retención Única
-                           </button>
+                           <div className="flex gap-4 w-full md:w-auto">
+                              <button onClick={() => { resetStates(); setRoute(AppRoute.HISTORY); }} className="flex-1 md:flex-none border border-slate-200 text-slate-400 px-8 py-5 rounded-[2rem] font-bold hover:bg-slate-50 transition-all">Cancelar</button>
+                              <button onClick={generateVoucher} className="flex-1 md:flex-none bg-slate-900 text-white px-12 py-5 rounded-[2rem] font-black shadow-2xl shadow-blue-500/30 hover:bg-blue-600 transition-all flex items-center justify-center gap-2">
+                                <span className="material-icons">task_alt</span> {editingVoucherId ? 'Guardar Cambios' : 'Emitir Retención Única'}
+                              </button>
+                           </div>
                         </div>
                      </div>
                    )}
@@ -1049,23 +1150,33 @@ const App: React.FC = () => {
                       <th className="p-6 font-bold text-slate-400 uppercase text-[10px]">Empresa</th>
                       <th className="p-6 font-bold text-slate-400 uppercase text-[10px]">Proveedor</th>
                       <th className="p-6 font-bold text-slate-400 uppercase text-[10px]">Monto Retenido</th>
-                      <th className="p-6 text-center"></th>
+                      <th className="p-6 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {generatedVouchers.map(v => (
-                      <tr key={v.id} className="hover:bg-slate-50 transition-all">
+                      <tr key={v.id} className="hover:bg-slate-50 transition-all group">
                         <td className="p-6 font-bold text-blue-600">{v.voucherNumber}</td>
                         <td className="p-6 font-medium text-slate-500">{v.company?.name}</td>
                         <td className="p-6 font-bold">{v.supplier?.name}</td>
                         <td className="p-6 font-black">{v.items?.reduce((acc: number, i: any) => acc + i.retentionAmount, 0).toLocaleString('es-VE')} Bs ({v.retentionPercentage}%)</td>
                         <td className="p-6 text-center">
-                           <button onClick={() => { setCurrentVoucher(v); setRoute(AppRoute.VIEW_RETENTION); }} className="w-10 h-10 bg-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center justify-center">
-                              <span className="material-icons">visibility</span>
-                           </button>
+                           <div className="flex justify-center gap-2">
+                              <button onClick={() => { setCurrentVoucher(v); setRoute(AppRoute.VIEW_RETENTION); }} className="w-9 h-9 bg-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center justify-center shadow-sm">
+                                 <span className="material-icons text-sm">visibility</span>
+                              </button>
+                              <button onClick={() => handleEditVoucher(v)} className="w-9 h-9 bg-slate-100 text-slate-400 hover:bg-amber-500 hover:text-white rounded-xl transition-all inline-flex items-center justify-center shadow-sm">
+                                 <span className="material-icons text-sm">edit</span>
+                              </button>
+                           </div>
                         </td>
                       </tr>
                     ))}
+                    {generatedVouchers.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-20 text-center text-slate-400 italic">No hay registros históricos.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
              </div>
@@ -1151,10 +1262,55 @@ const App: React.FC = () => {
         {/* VISTA DE COMPROBANTE (DETALLE) */}
         {route === AppRoute.VIEW_RETENTION && currentVoucher && (
            <div className="flex flex-col items-center animate-fade-in-up">
-             <div className="w-full max-w-4xl flex justify-start mb-8 no-print">
-               <button onClick={() => setRoute(AppRoute.HISTORY)} className="text-slate-400 hover:text-slate-900 font-bold flex items-center gap-2 transition-all px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-50">
-                 <span className="material-icons">arrow_back</span> Regresar al Historial
-               </button>
+             <div className="w-full max-w-4xl flex flex-col md:flex-row justify-between items-center mb-8 gap-4 no-print">
+               <div className="flex items-center gap-3">
+                  <button onClick={() => setRoute(AppRoute.HISTORY)} className="text-slate-400 hover:text-slate-900 font-bold flex items-center gap-2 transition-all px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-50">
+                    <span className="material-icons">arrow_back</span> Regresar
+                  </button>
+                  <button onClick={() => handleEditVoucher(currentVoucher)} className="text-amber-500 hover:bg-amber-500 hover:text-white font-bold flex items-center gap-2 transition-all px-4 py-2 bg-white rounded-xl shadow-sm border border-amber-100">
+                    <span className="material-icons">edit</span> Editar Retención
+                  </button>
+               </div>
+               
+               {/* Edición Segura del Número de Comprobante */}
+               <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+                  {isEditingVoucherNum ? (
+                    <div className="flex items-center gap-2 animate-fade-in">
+                       <input 
+                         autoFocus
+                         value={tempVoucherNum} 
+                         onChange={(e) => setTempVoucherNum(e.target.value)} 
+                         placeholder="YYYYMMXXXXXXXX"
+                         className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-black focus:ring-2 focus:ring-blue-500 outline-none w-44"
+                       />
+                       <button 
+                         onClick={handleUpdateVoucherNumber} 
+                         disabled={isUpdatingVoucherNum}
+                         className="bg-blue-600 text-white p-1.5 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                       >
+                         <span className="material-icons text-sm">{isUpdatingVoucherNum ? 'hourglass_top' : 'check'}</span>
+                       </button>
+                       <button 
+                         onClick={() => setIsEditingVoucherNum(false)} 
+                         className="bg-slate-100 text-slate-400 p-1.5 rounded-lg hover:bg-slate-200"
+                       >
+                         <span className="material-icons text-sm">close</span>
+                       </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-2">
+                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">N° Comprobante:</span>
+                       <span className="font-black text-slate-700">{currentVoucher.voucherNumber}</span>
+                       <button 
+                         onClick={() => { setTempVoucherNum(currentVoucher.voucherNumber); setIsEditingVoucherNum(true); }} 
+                         className="text-slate-300 hover:text-blue-600 transition-colors p-1"
+                         title="Editar número de comprobante de forma segura"
+                       >
+                         <span className="material-icons text-sm">edit</span>
+                       </button>
+                    </div>
+                  )}
+               </div>
              </div>
              <RetentionVoucher data={currentVoucher} />
            </div>
