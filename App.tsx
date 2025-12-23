@@ -149,6 +149,7 @@ const App: React.FC = () => {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
+  const [isSavingCompany, setIsSavingCompany] = useState(false);
 
   // Form para nueva factura individual
   const [newItem, setNewItem] = useState<Partial<InvoiceItem>>({
@@ -193,7 +194,8 @@ const App: React.FC = () => {
     const { data: cos } = await supabase.from('companies').select('*').eq('user_id', adminId);
     if (cos) setCompanies(cos.map(c => ({
         id: c.id, name: c.name, rif: c.rif, address: c.address, 
-        logoUrl: c.logo_url, lastCorrelationNumber: c.last_correlation_number || 1
+        logoUrl: c.logo_url, signatureUrl: c.signature_url, 
+        lastCorrelationNumber: c.last_correlation_number || 1
     })));
 
     // Cargar Proveedores
@@ -351,16 +353,57 @@ const App: React.FC = () => {
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile || userProfile.role !== 'admin') return;
+    setIsSavingCompany(true);
+    
     const fd = new FormData(e.target as HTMLFormElement);
-    const payload = {
-      user_id: userProfile.id,
-      name: fd.get('name') as string,
-      rif: fd.get('rif') as string,
-      address: fd.get('address') as string,
-      last_correlation_number: parseInt(fd.get('last_correlation_number') as string || "1")
-    };
-    const { error } = await supabase.from('companies').insert([payload]);
-    if (!error) { loadData(); alert("Empresa registrada"); (e.target as HTMLFormElement).reset(); }
+    const logoFile = fd.get('logo') as File;
+    const signatureFile = fd.get('signature') as File;
+    
+    let logoUrl = '';
+    let signatureUrl = '';
+
+    try {
+      // Upload Logo
+      if (logoFile && logoFile.size > 0) {
+        const logoName = `logo_${Date.now()}_${logoFile.name}`;
+        const { data: ld } = await supabase.storage.from('logos').upload(logoName, logoFile);
+        if (ld) {
+          const { data: purl } = supabase.storage.from('logos').getPublicUrl(logoName);
+          logoUrl = purl.publicUrl;
+        }
+      }
+
+      // Upload Signature
+      if (signatureFile && signatureFile.size > 0) {
+        const sigName = `sig_${Date.now()}_${signatureFile.name}`;
+        const { data: sd } = await supabase.storage.from('logos').upload(sigName, signatureFile);
+        if (sd) {
+          const { data: purl } = supabase.storage.from('logos').getPublicUrl(sigName);
+          signatureUrl = purl.publicUrl;
+        }
+      }
+
+      const payload = {
+        user_id: userProfile.id,
+        name: fd.get('name') as string,
+        rif: fd.get('rif') as string,
+        address: fd.get('address') as string,
+        logo_url: logoUrl,
+        signature_url: signatureUrl,
+        last_correlation_number: parseInt(fd.get('last_correlation_number') as string || "1")
+      };
+
+      const { error } = await supabase.from('companies').insert([payload]);
+      if (error) throw error;
+      
+      loadData(); 
+      alert("Empresa registrada con éxito"); 
+      (e.target as HTMLFormElement).reset();
+    } catch (err: any) {
+      alert("Error al registrar empresa: " + err.message);
+    } finally {
+      setIsSavingCompany(false);
+    }
   };
 
   const handleDeleteCompany = async (id: string) => {
@@ -1132,24 +1175,44 @@ const App: React.FC = () => {
                      <input required name="name" placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
                      <input required name="rif" placeholder="RIF (J-12345678-0)" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
                      <textarea required name="address" placeholder="Dirección Fiscal Completa" className="w-full bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Logo Empresa</label>
+                          <input type="file" name="logo" accept="image/*" className="w-full text-xs bg-slate-50 border border-slate-100 p-2 rounded-xl" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Firma y Sello</label>
+                          <input type="file" name="signature" accept="image/*" className="w-full text-xs bg-slate-50 border border-slate-100 p-2 rounded-xl" />
+                        </div>
+                     </div>
+
                      <input required type="number" name="last_correlation_number" placeholder="Próximo Correlativo" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
-                     <button type="submit" className="w-full bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg">Registrar Empresa</button>
+                     
+                     <button type="submit" disabled={isSavingCompany} className="w-full bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg">
+                       {isSavingCompany ? 'Guardando...' : 'Registrar Empresa'}
+                     </button>
                    </form>
                 </div>
 
                 <div className="space-y-4">
                    <h3 className="font-bold text-lg mb-4">Empresas Registradas</h3>
                    {companies.map(c => (
-                     <div key={c.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm group relative">
+                     <div key={c.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm group relative flex gap-4 items-center">
+                        {c.logoUrl && <img src={c.logoUrl} className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" alt="Logo" />}
+                        <div className="flex-1">
+                          <h4 className="font-black text-slate-800 line-clamp-1 pr-8">{c.name}</h4>
+                          <p className="text-blue-600 font-bold text-xs mt-1 uppercase">RIF: {c.rif}</p>
+                          <div className="flex gap-2 mt-1">
+                             {c.signatureUrl && <span className="text-[9px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full font-bold">Firma Digital OK</span>}
+                          </div>
+                        </div>
                         <button 
                           onClick={() => handleDeleteCompany(c.id)}
                           className="absolute top-4 right-4 text-slate-300 hover:text-red-500 p-2"
                         >
                           <span className="material-icons text-sm">delete</span>
                         </button>
-                        <h4 className="font-black text-slate-800 line-clamp-1 pr-8">{c.name}</h4>
-                        <p className="text-blue-600 font-bold text-xs mt-1 uppercase">RIF: {c.rif}</p>
-                        <p className="text-slate-400 text-[10px] font-bold mt-4 uppercase tracking-widest">Siguiente: {String(c.lastCorrelationNumber).padStart(8, '0')}</p>
                      </div>
                    ))}
                    {companies.length === 0 && (

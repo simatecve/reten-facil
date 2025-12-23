@@ -17,6 +17,7 @@ export interface Company {
   rif: string;
   address: string;
   logoUrl?: string;
+  signatureUrl?: string;
   lastCorrelationNumber?: number;
 }
 

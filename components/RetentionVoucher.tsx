@@ -195,16 +195,20 @@ const RetentionVoucher: React.FC<Props> = ({ data }) => {
 
         <div className="flex flex-col md:flex-row justify-between items-end mt-8 px-6 gap-8 md:gap-0">
           <div className="text-center w-full md:w-64">
-             <div className="border-b border-black mb-1 h-12 flex items-end justify-center relative">
-                <div className="absolute top-0 left-0 text-gray-300 text-3xl font-script transform -rotate-12 opacity-50 whitespace-nowrap overflow-hidden max-w-full">
-                   {data.company?.name?.substring(0, 20) || ''}
-                </div>
+             <div className="border-b border-black mb-1 h-14 flex items-center justify-center relative overflow-hidden">
+                {data.company?.signatureUrl ? (
+                   <img src={data.company.signatureUrl} className="max-h-12 w-auto mix-blend-multiply opacity-90" alt="Firma" />
+                ) : (
+                   <div className="text-gray-300 text-3xl font-script transform -rotate-12 opacity-50 whitespace-nowrap overflow-hidden max-w-full">
+                      {data.company?.name?.substring(0, 20) || ''}
+                   </div>
+                )}
              </div>
-             <div className="text-[8px] font-bold">FIRMA Y SELLO DEL AGENTE DE RETENCION</div>
+             <div className="text-[8px] font-bold uppercase tracking-tight">FIRMA Y SELLO DEL AGENTE DE RETENCION</div>
           </div>
           <div className="text-center w-full md:w-64">
-             <div className="border-b border-black mb-1 h-12"></div>
-             <div className="text-[8px] font-bold">FIRMA DEL BENEFICIARIO</div>
+             <div className="border-b border-black mb-1 h-14"></div>
+             <div className="text-[8px] font-bold uppercase tracking-tight">FIRMA DEL BENEFICIARIO</div>
              <div className="text-[8px] mt-0.5 text-gray-500">FECHA DE RECEPCIÓN: _____/_____/_________</div>
           </div>
         </div>
