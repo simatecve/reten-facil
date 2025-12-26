@@ -105,5 +105,6 @@ export enum AppRoute {
   USER_MANAGEMENT = 'user_management',
   PROFILE = 'profile',
   SUPPLIERS = 'suppliers',
-  COMMUNITY = 'community'
+  COMMUNITY = 'community',
+  REPORTS = 'reports'
 }

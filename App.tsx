@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { User } from '@supabase/supabase-js';
 import LandingPage from './components/LandingPage';
@@ -7,6 +7,8 @@ import ChatBot from './components/ChatBot';
 import RetentionVoucher from './components/RetentionVoucher';
 import { Company, InvoiceItem, AppRoute, RetentionVoucher as VoucherType, UserProfile, UserRole, Supplier, CommunityTopic, CommunityComment } from './types';
 import { analyzeInvoiceImage } from './lib/gemini';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 // --- Componentes de Interfaz ---
 
@@ -26,6 +28,7 @@ const Sidebar = ({
     { route: AppRoute.DASHBOARD, icon: 'grid_view', label: 'Dashboard', show: isAdmin },
     { route: AppRoute.CREATE_RETENTION, icon: 'add_circle', label: 'Nueva Retención', show: true },
     { route: AppRoute.HISTORY, icon: 'history', label: 'Historial', show: true },
+    { route: AppRoute.REPORTS, icon: 'analytics', label: 'Reportes', show: true },
     { route: AppRoute.SUPPLIERS, icon: 'contacts', label: 'Proveedores', show: true },
     { route: AppRoute.COMMUNITY, icon: 'forum', label: 'Comunidad', show: true },
     { route: AppRoute.CREATE_COMPANY, icon: 'business', label: 'Empresas', show: isAdmin },
@@ -85,7 +88,7 @@ const MobileBottomNav = ({ currentRoute, setRoute, resetStates, role }: any) => 
     { route: AppRoute.DASHBOARD, icon: 'grid_view', label: 'Inicio', show: isAdmin },
     { route: AppRoute.HISTORY, icon: 'history', label: 'Historial', show: true },
     { route: AppRoute.CREATE_RETENTION, icon: 'add_circle', label: 'Nueva', show: true, special: true },
-    { route: AppRoute.COMMUNITY, icon: 'forum', label: 'Comu', show: true },
+    { route: AppRoute.REPORTS, icon: 'analytics', label: 'Rep', show: true },
     { route: AppRoute.PROFILE, icon: 'person', label: 'Perfil', show: true },
   ].filter(t => t.show);
 
@@ -170,6 +173,14 @@ const App: React.FC = () => {
   const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
   const [showSupplierResults, setShowSupplierResults] = useState(false);
 
+  // --- Report Filters ---
+  const [reportStartDate, setReportStartDate] = useState('');
+  const [reportEndDate, setReportEndDate] = useState('');
+  const [reportSelectedCompanyId, setReportSelectedCompanyId] = useState('');
+  const [reportSelectedSupplierId, setReportSelectedSupplierId] = useState('');
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+
   // Efectos para persistir cambios en tiempo real
   useEffect(() => {
     if (user) {
@@ -193,6 +204,16 @@ const App: React.FC = () => {
       s.rif.toLowerCase().includes(q)
     );
   }, [suppliers, supplierSearchQuery]);
+
+  const filteredReportVouchers = useMemo(() => {
+    return generatedVouchers.filter(v => {
+      const dateMatch = (!reportStartDate || v.date >= reportStartDate) && 
+                       (!reportEndDate || v.date <= reportEndDate);
+      const companyMatch = !reportSelectedCompanyId || v.company?.id === reportSelectedCompanyId;
+      const supplierMatch = !reportSelectedSupplierId || v.supplier?.id === reportSelectedSupplierId;
+      return dateMatch && companyMatch && supplierMatch;
+    });
+  }, [generatedVouchers, reportStartDate, reportEndDate, reportSelectedCompanyId, reportSelectedSupplierId]);
 
   // States for sub-users, suppliers and profile
   const [isCreatingSubUser, setIsCreatingSubUser] = useState(false);
@@ -220,7 +241,6 @@ const App: React.FC = () => {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
-        // Si no hay ruta guardada o es landing, ir a dashboard
         if (!localStorage.getItem('last_route') || localStorage.getItem('last_route') === AppRoute.LANDING) {
             setRoute(AppRoute.DASHBOARD);
         }
@@ -239,7 +259,7 @@ const App: React.FC = () => {
       } else {
         setRoute(AppRoute.LANDING);
         setUserProfile(null);
-        localStorage.clear(); // Limpiar todo al cerrar sesión
+        localStorage.clear();
       }
     });
     return () => subscription.unsubscribe();
@@ -493,7 +513,7 @@ const App: React.FC = () => {
     if (!resultError) {
       loadData();
       setRoute(AppRoute.HISTORY);
-      resetStates(); // Aquí limpiamos el localStorage
+      resetStates();
       alert(editingVoucherId ? "Retención actualizada" : "Retención generada");
     } else { 
       alert(resultError.message); 
@@ -504,7 +524,7 @@ const App: React.FC = () => {
     setEditingVoucherId(voucher.id);
     setSelectedCompany(voucher.company);
     setSelectedSupplier(voucher.supplier);
-    setSupplierSearchQuery(voucher.supplier.name);
+    setSupplierSearchQuery(voucher.supplier?.name || '');
     setWizItems(voucher.items);
     setWizRetentionPercentage(voucher.retentionPercentage as 75 | 100);
     setWizStep(3);
@@ -526,7 +546,7 @@ const App: React.FC = () => {
       const { data: existing, error: checkError } = await supabase
         .from('retentions')
         .select('id')
-        .eq('company_id', currentVoucher.company.id)
+        .eq('company_id', currentVoucher.company?.id)
         .eq('voucher_number', tempVoucherNum)
         .not('id', 'eq', currentVoucher.id);
       
@@ -750,7 +770,6 @@ const App: React.FC = () => {
     setEditingVoucherId(null);
     setIsEditingVoucherNum(false);
     setSelectedTopic(null);
-    // Limpiar localStorage del borrador
     localStorage.removeItem('wiz_step');
     localStorage.removeItem('wiz_company');
     localStorage.removeItem('wiz_supplier');
@@ -770,6 +789,7 @@ const App: React.FC = () => {
       case AppRoute.PROFILE: return 'Mi Perfil';
       case AppRoute.USER_MANAGEMENT: return 'Mi Equipo';
       case AppRoute.CREATE_COMPANY: return 'Empresas';
+      case AppRoute.REPORTS: return 'Reportes e Informes';
       default: return 'RetenFácil';
     }
   }
@@ -813,6 +833,45 @@ const App: React.FC = () => {
 
     return { totalRetained, totalIVA, chartLabels, chartValues, maxVal, topSuppliers };
   }, [generatedVouchers]);
+
+  // --- Report Export Functions ---
+  const exportReportToPdf = async () => {
+    if (!reportRef.current) return;
+    setIsGeneratingReport(true);
+    try {
+      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Reporte_Retenciones_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert("Error al generar PDF");
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const exportReportToCsv = () => {
+    const headers = ["Fecha", "Comprobante", "Empresa", "Proveedor", "RIF Proveedor", "Base Imponible", "IVA", "Retenido"];
+    const rows = filteredReportVouchers.map(v => {
+      const base = v.items?.reduce((acc, i) => acc + (i?.taxBase || 0), 0) || 0;
+      const tax = v.items?.reduce((acc, i) => acc + (i?.taxAmount || 0), 0) || 0;
+      const retained = v.items?.reduce((acc, i) => acc + (i?.retentionAmount || 0), 0) || 0;
+      return [v.date, v.voucherNumber, v.company?.name || 'N/A', v.supplier?.name || 'N/A', v.supplier?.rif || 'N/A', base, tax, retained];
+    });
+    
+    let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Reporte_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   if (loading) return null;
   if (!user || route === AppRoute.LANDING) return <LandingPage />;
@@ -884,7 +943,7 @@ const App: React.FC = () => {
                         <div key={idx} className="flex-1 flex flex-col items-center group relative">
                           <div 
                             className="w-full bg-blue-100 group-hover:bg-blue-600 rounded-t-xl transition-all duration-500" 
-                            style={{ height: `${(val / dashboardStats.maxVal) * 100}%` }}
+                            style={{ height: `${(val / (dashboardStats.maxVal || 1)) * 100}%` }}
                           >
                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                                Bs {val.toLocaleString()}
@@ -908,7 +967,7 @@ const App: React.FC = () => {
                            <div className="w-full h-2 bg-slate-50 rounded-full overflow-hidden">
                               <div 
                                 className="h-full bg-blue-500 rounded-full transition-all duration-1000" 
-                                style={{ width: `${(s.total / Math.max(...dashboardStats.topSuppliers.map(p => p.total))) * 100}%` }}
+                                style={{ width: `${(s.total / Math.max(...dashboardStats.topSuppliers.map(p => p.total), 1)) * 100}%` }}
                               ></div>
                            </div>
                         </div>
@@ -939,7 +998,7 @@ const App: React.FC = () => {
                            <tr key={v.id} className="hover:bg-slate-50 transition-all group">
                               <td className="py-4 text-sm font-bold text-blue-600">{v.voucherNumber}</td>
                               <td className="py-4 text-sm font-medium text-slate-700">{v.supplier?.name}</td>
-                              <td className="py-4 text-sm font-black text-right">Bs {v.items?.reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString()}</td>
+                              <td className="py-4 text-sm font-black text-right">Bs {v.items?.reduce((acc, i) => acc + (i?.retentionAmount || 0), 0).toLocaleString()}</td>
                               <td className="py-4 text-right">
                                  <button 
                                    onClick={() => { setCurrentVoucher(v); setRoute(AppRoute.VIEW_RETENTION); }}
@@ -950,11 +1009,6 @@ const App: React.FC = () => {
                               </td>
                            </tr>
                          ))}
-                         {generatedVouchers.length === 0 && (
-                           <tr>
-                              <td colSpan={4} className="py-10 text-center text-slate-400 text-sm italic">Sin registros aún.</td>
-                           </tr>
-                         )}
                       </tbody>
                    </table>
                 </div>
@@ -1051,7 +1105,7 @@ const App: React.FC = () => {
                               </button>
                             )) : (
                               <div className="p-6 text-center text-slate-400 text-sm italic">
-                                No se encontraron proveedores. Continúa escribiendo abajo para crear uno nuevo.
+                                No se encontraron proveedores.
                               </div>
                             )}
                           </div>
@@ -1153,10 +1207,10 @@ const App: React.FC = () => {
                                    <p className="font-black text-slate-900">Factura #{item.invoiceNumber}</p>
                                    <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded-full text-slate-500 font-bold">{item.date}</span>
                                  </div>
-                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">IVA retener ({wizRetentionPercentage}%): {item.retentionAmount.toLocaleString('es-VE')} Bs</p>
+                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">IVA retener ({wizRetentionPercentage}%): {(item?.retentionAmount || 0).toLocaleString('es-VE')} Bs</p>
                               </div>
                               <div className="flex items-center gap-4 mt-3 md:mt-0 w-full md:w-auto justify-between">
-                                <span className="font-black text-blue-600 text-lg">{item.totalAmount.toLocaleString('es-VE')} Bs</span>
+                                <span className="font-black text-blue-600 text-lg">{(item?.totalAmount || 0).toLocaleString('es-VE')} Bs</span>
                                 <button 
                                   onClick={() => setWizItems(wizItems.filter(i => i.id !== item.id))} 
                                   className="w-10 h-10 bg-white text-red-400 hover:bg-red-500 hover:text-white rounded-xl transition-all flex items-center justify-center shadow-sm"
@@ -1171,7 +1225,7 @@ const App: React.FC = () => {
                         <div className="mt-8 pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-6">
                            <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total a Retener (Comprobante Único)</p>
-                              <p className="text-3xl font-black text-slate-900">{wizItems.reduce((acc, i) => acc + i.retentionAmount, 0).toLocaleString('es-VE')} <span className="text-lg text-slate-400">Bs</span></p>
+                              <p className="text-3xl font-black text-slate-900">{wizItems.reduce((acc, i) => acc + (i?.retentionAmount || 0), 0).toLocaleString('es-VE')} <span className="text-lg text-slate-400">Bs</span></p>
                               <p className="text-xs text-blue-600 font-bold mt-1 uppercase tracking-tight">{wizItems.length} facturas incluidas</p>
                            </div>
                            <div className="flex gap-4 w-full md:w-auto">
@@ -1186,6 +1240,137 @@ const App: React.FC = () => {
                 </div>
               )}
            </div>
+        )}
+
+        {/* REPORTES E INFORMES */}
+        {route === AppRoute.REPORTS && (
+          <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
+             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-3xl font-black">Reportes e Informes</h2>
+                  <p className="text-slate-500">Analiza tus retenciones por periodo y proveedor.</p>
+                </div>
+                <div className="flex gap-3">
+                   <button onClick={exportReportToCsv} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-emerald-700 transition-all">
+                      <span className="material-icons">table_view</span> Excel (CSV)
+                   </button>
+                   <button onClick={exportReportToPdf} disabled={isGeneratingReport} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50">
+                      <span className="material-icons">picture_as_pdf</span> {isGeneratingReport ? 'Generando...' : 'Exportar PDF'}
+                   </button>
+                </div>
+             </header>
+
+             {/* Filtros de Reporte */}
+             <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-4 gap-6 items-end no-print">
+                <div className="space-y-1">
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Desde</label>
+                   <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold" />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Hasta</label>
+                   <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold" />
+                </div>
+                <div className="space-y-1">
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Empresa</label>
+                   <select value={reportSelectedCompanyId} onChange={e => setReportSelectedCompanyId(e.target.value)} className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold appearance-none">
+                      <option value="">Todas las Empresas</option>
+                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                   </select>
+                </div>
+                <div className="space-y-1">
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Proveedor</label>
+                   <select value={reportSelectedSupplierId} onChange={e => setReportSelectedSupplierId(e.target.value)} className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold appearance-none">
+                      <option value="">Todos los Proveedores</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                   </select>
+                </div>
+             </div>
+
+             {/* Contenido del Reporte para Exportación */}
+             <div ref={reportRef} className="bg-white p-10 rounded-[2rem] shadow-sm border border-slate-100 min-h-[600px] flex flex-col">
+                <div className="flex justify-between items-start border-b pb-8 mb-8">
+                   <div>
+                      {reportSelectedCompanyId && (
+                         <div className="flex items-center gap-4">
+                            {companies.find(c => c.id === reportSelectedCompanyId)?.logoUrl && (
+                               <img src={companies.find(c => c.id === reportSelectedCompanyId)?.logoUrl} className="h-16 w-auto object-contain" alt="Logo" />
+                            )}
+                            <div>
+                               <h1 className="text-2xl font-black text-slate-900">{companies.find(c => c.id === reportSelectedCompanyId)?.name}</h1>
+                               <p className="text-sm font-bold text-blue-600">RIF: {companies.find(c => c.id === reportSelectedCompanyId)?.rif}</p>
+                            </div>
+                         </div>
+                      )}
+                      {!reportSelectedCompanyId && <h1 className="text-2xl font-black text-slate-900">Informe Consolidado de Retenciones</h1>}
+                   </div>
+                   <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha del Reporte</p>
+                      <p className="font-bold text-slate-700">{new Date().toLocaleDateString('es-VE')}</p>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
+                   <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Comprobantes</p>
+                      <p className="text-3xl font-black">{filteredReportVouchers.length}</p>
+                   </div>
+                   <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Base Imponible Total (Bs)</p>
+                      <p className="text-3xl font-black text-slate-900">
+                         {filteredReportVouchers.reduce((acc, v) => acc + (v.items?.reduce((sum, i) => sum + (i?.taxBase || 0), 0) || 0), 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                      </p>
+                   </div>
+                   <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100">
+                      <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Total Retenido (Bs)</p>
+                      <p className="text-3xl font-black text-blue-600">
+                         {filteredReportVouchers.reduce((acc, v) => acc + (v.items?.reduce((sum, i) => sum + (i?.retentionAmount || 0), 0) || 0), 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                      </p>
+                   </div>
+                </div>
+
+                <div className="flex-1 overflow-x-auto">
+                   <table className="w-full text-left border-collapse">
+                      <thead>
+                         <tr className="border-b-2 border-slate-100">
+                            <th className="py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha</th>
+                            <th className="py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">N° Comprobante</th>
+                            <th className="py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Proveedor</th>
+                            <th className="py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">IVA</th>
+                            <th className="py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Retenido (Bs)</th>
+                         </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                         {filteredReportVouchers.map(v => (
+                           <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-4 text-xs font-bold text-slate-600">{v.date}</td>
+                              <td className="py-4 text-xs font-black text-blue-600">{v.voucherNumber}</td>
+                              <td className="py-4">
+                                 <p className="text-xs font-bold text-slate-800">{v.supplier?.name || 'N/A'}</p>
+                                 <p className="text-[9px] text-slate-400 uppercase font-black">{v.supplier?.rif || 'N/A'}</p>
+                              </td>
+                              <td className="py-4 text-xs font-semibold text-right">
+                                 {(v.items?.reduce((acc, i) => acc + (i?.taxAmount || 0), 0) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-4 text-xs font-black text-right text-slate-900">
+                                 {(v.items?.reduce((acc, i) => acc + (i?.retentionAmount || 0), 0) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                              </td>
+                           </tr>
+                         ))}
+                         {filteredReportVouchers.length === 0 && (
+                           <tr>
+                              <td colSpan={5} className="py-20 text-center text-slate-300 font-medium italic">No se encontraron registros con los filtros aplicados.</td>
+                           </tr>
+                         )}
+                      </tbody>
+                   </table>
+                </div>
+
+                <div className="mt-12 pt-8 border-t flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                   <p>Generado por RetenFácil Venezuela</p>
+                   <p>Página 1 de 1</p>
+                </div>
+             </div>
+          </div>
         )}
 
         {/* COMUNIDAD Y FEEDBACK */}
@@ -1470,7 +1655,7 @@ const App: React.FC = () => {
                         <td className="p-6 font-bold text-blue-600">{v.voucherNumber}</td>
                         <td className="p-6 font-medium text-slate-500">{v.company?.name}</td>
                         <td className="p-6 font-bold">{v.supplier?.name}</td>
-                        <td className="p-6 font-black">{v.items?.reduce((acc: number, i: any) => acc + i.retentionAmount, 0).toLocaleString('es-VE')} Bs ({v.retentionPercentage}%)</td>
+                        <td className="p-6 font-black">{v.items?.reduce((acc: number, i: any) => acc + (i?.retentionAmount || 0), 0).toLocaleString('es-VE')} Bs ({v.retentionPercentage}%)</td>
                         <td className="p-6 text-center">
                            <div className="flex justify-center gap-2">
                               <button onClick={() => { setCurrentVoucher(v); setRoute(AppRoute.VIEW_RETENTION); }} className="w-9 h-9 bg-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center justify-center shadow-sm">
