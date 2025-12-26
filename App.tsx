@@ -151,6 +151,19 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
 
+  // Supplier Searcher States
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
+  const [showSupplierResults, setShowSupplierResults] = useState(false);
+
+  const filteredSuppliers = useMemo(() => {
+    if (!supplierSearchQuery.trim()) return [];
+    const q = supplierSearchQuery.toLowerCase();
+    return suppliers.filter(s => 
+      s.name.toLowerCase().includes(q) || 
+      s.rif.toLowerCase().includes(q)
+    );
+  }, [suppliers, supplierSearchQuery]);
+
   // Edit Mode State
   const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
 
@@ -349,9 +362,13 @@ const App: React.FC = () => {
           const existing = suppliers.find(s => s.rif.replace(/\W/g, '').toUpperCase() === data.supplierRif?.replace(/\W/g, '').toUpperCase());
           if (existing) {
               setSelectedSupplier(existing);
+              setSupplierSearchQuery(existing.name);
               if (existing.defaultRetentionRate) setWizRetentionPercentage(existing.defaultRetentionRate);
           }
-          else setSelectedSupplier({ name: data.supplierName || '', rif: data.supplierRif || '', address: '' });
+          else {
+            setSelectedSupplier({ name: data.supplierName || '', rif: data.supplierRif || '', address: '' });
+            setSupplierSearchQuery(data.supplierName || '');
+          }
           
           setNewItem(prev => ({ 
             ...prev, 
@@ -451,6 +468,7 @@ const App: React.FC = () => {
     setEditingVoucherId(voucher.id);
     setSelectedCompany(voucher.company);
     setSelectedSupplier(voucher.supplier);
+    setSupplierSearchQuery(voucher.supplier.name);
     setWizItems(voucher.items);
     setWizRetentionPercentage(voucher.retentionPercentage as 75 | 100);
     setWizStep(3);
@@ -693,6 +711,8 @@ const App: React.FC = () => {
     setWizStep(1);
     setSelectedCompany(null);
     setSelectedSupplier(null);
+    setSupplierSearchQuery('');
+    setShowSupplierResults(false);
     setWizItems([]);
     setWizRetentionPercentage(75);
     setLastScannedFile(null);
@@ -943,7 +963,7 @@ const App: React.FC = () => {
               )}
 
               {wizStep === 2 && (
-                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden">
+                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden min-h-[400px]">
                   {isAnalyzing && <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center z-20">
                     <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
                     <p className="font-bold text-blue-600">Analizando con IA...</p>
@@ -953,39 +973,69 @@ const App: React.FC = () => {
                     <h3 className="font-bold text-xl">2. Proveedor</h3>
                     <div className="relative group">
                       <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-20" />
-                      <button className="bg-blue-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 shadow-lg">
+                      <button className="bg-blue-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 shadow-lg hover:scale-105 transition-all">
                         <span className="material-icons">auto_awesome</span> Escanear Factura
                       </button>
                     </div>
                   </div>
 
                   <div className="space-y-6">
-                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Buscar Existente</label>
-                      <select 
-                        className="w-full bg-white border border-slate-200 p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
-                        onChange={(e) => {
-                          const s = suppliers.find(sup => sup.id === e.target.value);
-                          if (s) {
-                              setSelectedSupplier(s);
-                              if (s.defaultRetentionRate) setWizRetentionPercentage(s.defaultRetentionRate);
-                          }
-                        }}
-                        value={selectedSupplier?.id || ''}
-                      >
-                        <option value="">-- Seleccionar de la lista --</option>
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.rif})</option>)}
-                      </select>
+                    {/* Buscador de proveedores */}
+                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 relative">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Buscar Proveedor Existente (Nombre o RIF)</label>
+                      <div className="relative">
+                        <div className="flex items-center bg-white border border-slate-200 rounded-2xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 transition-all shadow-sm">
+                          <span className="material-icons text-slate-400 ml-4">search</span>
+                          <input 
+                            type="text"
+                            className="w-full p-4 outline-none text-sm font-semibold text-slate-700"
+                            placeholder="Escribe el nombre o RIF..."
+                            value={supplierSearchQuery}
+                            onChange={(e) => {
+                              setSupplierSearchQuery(e.target.value);
+                              setShowSupplierResults(true);
+                            }}
+                            onFocus={() => setShowSupplierResults(true)}
+                          />
+                        </div>
+                        
+                        {showSupplierResults && (supplierSearchQuery.trim() !== '') && (
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 max-h-60 overflow-y-auto animate-fade-in divide-y divide-slate-50">
+                            {filteredSuppliers.length > 0 ? filteredSuppliers.map(s => (
+                              <button 
+                                key={s.id}
+                                onClick={() => {
+                                  setSelectedSupplier(s);
+                                  if (s.defaultRetentionRate) setWizRetentionPercentage(s.defaultRetentionRate as 75 | 100);
+                                  setSupplierSearchQuery(s.name);
+                                  setShowSupplierResults(false);
+                                }}
+                                className="w-full text-left p-4 hover:bg-blue-50 flex items-center justify-between group transition-all"
+                              >
+                                <div>
+                                  <p className="font-bold text-slate-800 group-hover:text-blue-700">{s.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">RIF: {s.rif}</p>
+                                </div>
+                                <span className="material-icons text-slate-300 group-hover:text-blue-500">add_circle_outline</span>
+                              </button>
+                            )) : (
+                              <div className="p-6 text-center text-slate-400 text-sm italic">
+                                No se encontraron proveedores. Continúa escribiendo abajo para crear uno nuevo.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-1">
                        <div>
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">RIF del Proveedor</label>
                           <input 
                             value={selectedSupplier?.rif || ''} 
                             onChange={e => setSelectedSupplier({...selectedSupplier, rif: e.target.value})} 
                             placeholder="J-12345678-0" 
-                            className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" 
+                            className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none font-semibold text-slate-700" 
                           />
                        </div>
                        <div>
@@ -994,7 +1044,7 @@ const App: React.FC = () => {
                             value={selectedSupplier?.name || ''} 
                             onChange={e => setSelectedSupplier({...selectedSupplier, name: e.target.value})} 
                             placeholder="Nombre del proveedor" 
-                            className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none" 
+                            className="w-full bg-slate-50 border-none p-4 rounded-2xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none font-semibold text-slate-700" 
                           />
                        </div>
                     </div>
@@ -1005,7 +1055,7 @@ const App: React.FC = () => {
                           if (selectedSupplier?.name && selectedSupplier?.rif) setWizStep(3);
                           else alert("Completa los datos del proveedor");
                         }} 
-                        className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-blue-600"
+                        className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-md"
                       >Siguiente</button>
                     </div>
                   </div>
