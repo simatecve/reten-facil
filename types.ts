@@ -18,6 +18,7 @@ export interface Company {
   address: string;
   logoUrl?: string;
   signatureUrl?: string;
+  stampUrl?: string;
   lastCorrelationNumber?: number;
 }
 

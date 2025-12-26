@@ -18,6 +18,7 @@ export const chatWithGemini = async (
   if (!ai) return "Error: API Key no configurada.";
 
   try {
+    // Correct Model selection based on task: Complex Text Tasks -> 'gemini-3-pro-preview'
     const modelId = 'gemini-3-pro-preview'; 
     const chat = ai.chats.create({
       model: modelId,
@@ -51,7 +52,8 @@ export const analyzeInvoiceText = async (text: string): Promise<string> => {
 
     try {
         const result = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            // Correct Model selection based on task: Basic Text Tasks -> 'gemini-3-flash-preview'
+            model: 'gemini-3-flash-preview',
             contents: `Analiza el siguiente texto que parece ser data de una factura venezolana. 
             Extrae formato JSON: { "invoiceNumber": string, "controlNumber": string, "base": number, "iva": number, "total": number, "rif": string, "date": "YYYY-MM-DD" }.
             Si falta algún dato ponlo como string vacío o 0.
