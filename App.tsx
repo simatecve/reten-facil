@@ -189,6 +189,9 @@ const App: React.FC = () => {
   const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
   const [stampPreview, setStampPreview] = useState<string | null>(null);
 
+  // --- Estado de Edición de Empresa ---
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+
   // Efectos para persistir cambios en tiempo real
   useEffect(() => {
     if (user) {
@@ -341,7 +344,7 @@ const App: React.FC = () => {
     const { data: cos } = await supabase.from('companies').select('*').eq('user_id', adminId);
     if (cos) setCompanies(cos.map(c => ({
         id: c.id, name: c.name, rif: c.rif, address: c.address, 
-        logoUrl: c.logo_url, signature_url: c.signature_url, stampUrl: c.stamp_url,
+        logoUrl: c.logo_url, signatureUrl: c.signature_url, stampUrl: c.stamp_url,
         lastCorrelationNumber: c.last_correlation_number || 1
     })));
 
@@ -550,7 +553,11 @@ const App: React.FC = () => {
     const logoFile = fd.get('logo') as File;
     const signatureFile = fd.get('signature') as File;
     const stampFile = fd.get('stamp') as File;
-    let logoUrl = '', signatureUrl = '', stampUrl = '';
+    
+    let logoUrl = editingCompany?.logoUrl || '';
+    let signatureUrl = editingCompany?.signatureUrl || '';
+    let stampUrl = editingCompany?.stampUrl || '';
+    
     try {
       if (logoFile?.size) {
         const { data } = await supabase.storage.from('logos').upload(`logo_${Date.now()}_${logoFile.name}`, logoFile);
@@ -564,15 +571,34 @@ const App: React.FC = () => {
         const { data } = await supabase.storage.from('logos').upload(`stamp_${Date.now()}_${stampFile.name}`, stampFile);
         if (data) stampUrl = supabase.storage.from('logos').getPublicUrl(data.path).data.publicUrl;
       }
-      const { error } = await supabase.from('companies').insert([{
-        user_id: userProfile.id, name: fd.get('name'), rif: fd.get('rif'), address: fd.get('address'),
-        logo_url: logoUrl, signature_url: signatureUrl, stamp_url: stampUrl,
+
+      const payload = {
+        name: fd.get('name') as string, 
+        rif: fd.get('rif') as string, 
+        address: fd.get('address') as string,
+        logo_url: logoUrl, 
+        signature_url: signatureUrl, 
+        stamp_url: stampUrl,
         last_correlation_number: parseInt(fd.get('last_correlation_number') as string || "1")
-      }]);
-      if (error) throw error;
-      loadData(); alert("Empresa registrada"); (e.target as HTMLFormElement).reset(); 
-      setLogoPreview(null); setSignaturePreview(null); setStampPreview(null);
-    } catch (err: any) { alert("Error al registrar: " + err.message); } finally { setIsSavingCompany(false); }
+      };
+
+      if (editingCompany) {
+        const { error } = await supabase.from('companies').update(payload).eq('id', editingCompany.id);
+        if (error) throw error;
+        alert("Empresa actualizada");
+      } else {
+        const { error } = await supabase.from('companies').insert([{ ...payload, user_id: userProfile.id }]);
+        if (error) throw error;
+        alert("Empresa registrada");
+      }
+      
+      loadData(); 
+      (e.target as HTMLFormElement).reset(); 
+      setEditingCompany(null);
+      setLogoPreview(null); 
+      setSignaturePreview(null); 
+      setStampPreview(null);
+    } catch (err: any) { alert("Error: " + err.message); } finally { setIsSavingCompany(false); }
   };
 
   const handleDeleteCompany = async (id: string) => {
@@ -635,6 +661,7 @@ const App: React.FC = () => {
     setWizStep(1); setSelectedCompany(null); setSelectedSupplier(null); setSupplierSearchQuery(''); setShowSupplierResults(false);
     setWizItems([]); setWizRetentionPercentage(75); setLastScannedFile(null); setEditingSubUser(null); setEditingSupplier(null);
     setEditingVoucherId(null); setIsEditingVoucherNum(false); setSelectedTopic(null);
+    setEditingCompany(null); setLogoPreview(null); setSignaturePreview(null); setStampPreview(null);
     localStorage.removeItem('wiz_step'); localStorage.removeItem('wiz_company'); localStorage.removeItem('wiz_supplier');
     localStorage.removeItem('wiz_items'); localStorage.removeItem('wiz_percentage'); localStorage.removeItem('wiz_search_query'); localStorage.removeItem('wiz_editing_id');
   };
@@ -842,11 +869,15 @@ const App: React.FC = () => {
               <header><h2 className="text-3xl font-black">Empresas</h2><p className="text-slate-500">Agentes de retención.</p></header>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 h-fit">
-                   <h3 className="font-bold text-lg mb-6">Nueva Empresa</h3>
-                   <form onSubmit={handleCreateCompany} className="space-y-4">
-                     <input required name="name" placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
-                     <input required name="rif" placeholder="RIF (J-12345678-0)" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
-                     <textarea required name="address" placeholder="Dirección Fiscal" className="w-full bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                   <h3 className="font-bold text-lg mb-6">{editingCompany ? 'Editar Empresa' : 'Nueva Empresa'}</h3>
+                   <form 
+                    key={editingCompany?.id || 'new'}
+                    onSubmit={handleCreateCompany} 
+                    className="space-y-4"
+                   >
+                     <input required name="name" defaultValue={editingCompany?.name || ''} placeholder="Razón Social" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     <input required name="rif" defaultValue={editingCompany?.rif || ''} placeholder="RIF (J-12345678-0)" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     <textarea required name="address" defaultValue={editingCompany?.address || ''} placeholder="Dirección Fiscal" className="w-full bg-slate-50 border-none p-4 rounded-2xl h-24 focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
                      
                      <div className="space-y-4 pt-2">
                         {/* Logo */}
@@ -884,22 +915,46 @@ const App: React.FC = () => {
                         </div>
                      </div>
 
-                     <input required type="number" name="last_correlation_number" placeholder="Próximo Correlativo" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
-                     <button type="submit" disabled={isSavingCompany} className="w-full bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg">{isSavingCompany ? 'Guardando...' : 'Registrar Empresa'}</button>
+                     <input required type="number" name="last_correlation_number" defaultValue={editingCompany?.lastCorrelationNumber || 1} placeholder="Próximo Correlativo" className="w-full bg-slate-50 border-none p-4 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold" />
+                     
+                     <div className="flex gap-3">
+                       <button type="submit" disabled={isSavingCompany} className="flex-1 bg-slate-900 text-white rounded-2xl font-bold py-4 hover:bg-blue-600 transition-all shadow-lg">
+                         {isSavingCompany ? 'Guardando...' : editingCompany ? 'Actualizar Empresa' : 'Registrar Empresa'}
+                       </button>
+                       {editingCompany && (
+                         <button type="button" onClick={() => resetStates()} className="bg-slate-200 text-slate-600 rounded-2xl font-bold px-6 py-4">
+                           Cancelar
+                         </button>
+                       )}
+                     </div>
                    </form>
                 </div>
                 <div className="space-y-4">
                    <h3 className="font-bold text-lg mb-4">Registradas</h3>
                    {companies.map(c => (
-                     <div key={c.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative flex gap-4 items-center">
+                     <div key={c.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative flex gap-4 items-center group">
                         {c.logoUrl && <img src={c.logoUrl} className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" />}
-                        <div className="flex-1"><h4 className="font-black text-slate-800 line-clamp-1 pr-8">{c.name}</h4><p className="text-blue-600 font-bold text-xs uppercase">RIF: {c.rif}</p>
+                        <div className="flex-1"><h4 className="font-black text-slate-800 line-clamp-1 pr-16">{c.name}</h4><p className="text-blue-600 font-bold text-xs uppercase">RIF: {c.rif}</p>
                           <div className="flex gap-1 mt-2">
                              {c.signatureUrl && <span className="text-[7px] bg-green-50 text-green-600 px-1 py-0.5 rounded-full font-bold border border-green-100">FIRMA OK</span>}
                              {c.stampUrl && <span className="text-[7px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded-full font-bold border border-blue-100">SELLO OK</span>}
                           </div>
                         </div>
-                        <button onClick={() => handleDeleteCompany(c.id)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 p-2"><span className="material-icons text-sm">delete</span></button>
+                        <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => {
+                              setEditingCompany(c);
+                              setLogoPreview(c.logoUrl || null);
+                              setSignaturePreview(c.signatureUrl || null);
+                              setStampPreview(c.stampUrl || null);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }} 
+                            className="text-slate-400 hover:text-blue-500 p-2"
+                          >
+                            <span className="material-icons text-sm">edit</span>
+                          </button>
+                          <button onClick={() => handleDeleteCompany(c.id)} className="text-slate-300 hover:text-red-500 p-2"><span className="material-icons text-sm">delete</span></button>
+                        </div>
                      </div>
                    ))}
                 </div>
