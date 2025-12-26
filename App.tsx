@@ -50,7 +50,7 @@ const Sidebar = ({
         {menuItems.map((item) => (
           <button 
             key={item.route}
-            onClick={() => { resetStates(); setRoute(item.route); }}
+            onClick={() => { setRoute(item.route); }}
             className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all group ${currentRoute === item.route ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'} ${isCollapsed ? 'justify-center' : ''}`}
             title={isCollapsed ? item.label : ''}
           >
@@ -60,7 +60,7 @@ const Sidebar = ({
         ))}
         
         <button 
-          onClick={() => { resetStates(); setRoute(AppRoute.PROFILE); }}
+          onClick={() => { setRoute(AppRoute.PROFILE); }}
           className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all group ${currentRoute === AppRoute.PROFILE ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'} ${isCollapsed ? 'justify-center' : ''}`}
           title={isCollapsed ? "Mi Perfil" : ''}
         >
@@ -94,7 +94,7 @@ const MobileBottomNav = ({ currentRoute, setRoute, resetStates, role }: any) => 
       {tabs.map((tab) => (
         <button
           key={tab.route}
-          onClick={() => { resetStates(); setRoute(tab.route); }}
+          onClick={() => { setRoute(tab.route); }}
           className={`flex flex-col items-center gap-1 min-w-[64px] transition-all ${
             tab.special 
             ? 'bg-blue-600 text-white p-3 rounded-full -mt-10 shadow-lg shadow-blue-300' 
@@ -125,7 +125,10 @@ const MobileHeader = ({ title }: any) => {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [route, setRoute] = useState<AppRoute>(AppRoute.LANDING);
+  const [route, setRoute] = useState<AppRoute>(() => {
+    const saved = localStorage.getItem('last_route');
+    return (saved as AppRoute) || AppRoute.LANDING;
+  });
   const [loading, setLoading] = useState(true);
   
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -142,18 +145,45 @@ const App: React.FC = () => {
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
   const [isPostingComment, setIsPostingComment] = useState(false);
 
-  // Wizard States
-  const [wizStep, setWizStep] = useState(1);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
-  const [selectedSupplier, setSelectedSupplier] = useState<Partial<Supplier> | null>(null);
-  const [wizItems, setWizItems] = useState<InvoiceItem[]>([]);
-  const [wizRetentionPercentage, setWizRetentionPercentage] = useState<75 | 100>(75);
+  // Wizard States con persistencia
+  const [wizStep, setWizStep] = useState<number>(() => parseInt(localStorage.getItem('wiz_step') || '1'));
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(() => {
+    const saved = localStorage.getItem('wiz_company');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [selectedSupplier, setSelectedSupplier] = useState<Partial<Supplier> | null>(() => {
+    const saved = localStorage.getItem('wiz_supplier');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [wizItems, setWizItems] = useState<InvoiceItem[]>(() => {
+    const saved = localStorage.getItem('wiz_items');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [wizRetentionPercentage, setWizRetentionPercentage] = useState<75 | 100>(() => {
+    const saved = localStorage.getItem('wiz_percentage');
+    return (parseInt(saved || '75') as 75 | 100);
+  });
+  const [editingVoucherId, setEditingVoucherId] = useState<string | null>(() => localStorage.getItem('wiz_editing_id'));
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState(() => localStorage.getItem('wiz_search_query') || '');
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
-
-  // Supplier Searcher States
-  const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
   const [showSupplierResults, setShowSupplierResults] = useState(false);
+
+  // Efectos para persistir cambios en tiempo real
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('last_route', route);
+      localStorage.setItem('wiz_step', wizStep.toString());
+      localStorage.setItem('wiz_company', JSON.stringify(selectedCompany));
+      localStorage.setItem('wiz_supplier', JSON.stringify(selectedSupplier));
+      localStorage.setItem('wiz_items', JSON.stringify(wizItems));
+      localStorage.setItem('wiz_percentage', wizRetentionPercentage.toString());
+      localStorage.setItem('wiz_search_query', supplierSearchQuery);
+      if (editingVoucherId) localStorage.setItem('wiz_editing_id', editingVoucherId);
+      else localStorage.removeItem('wiz_editing_id');
+    }
+  }, [route, wizStep, selectedCompany, selectedSupplier, wizItems, wizRetentionPercentage, editingVoucherId, supplierSearchQuery, user]);
 
   const filteredSuppliers = useMemo(() => {
     if (!supplierSearchQuery.trim()) return [];
@@ -163,9 +193,6 @@ const App: React.FC = () => {
       s.rif.toLowerCase().includes(q)
     );
   }, [suppliers, supplierSearchQuery]);
-
-  // Edit Mode State
-  const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
 
   // States for sub-users, suppliers and profile
   const [isCreatingSubUser, setIsCreatingSubUser] = useState(false);
@@ -191,7 +218,13 @@ const App: React.FC = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+        // Si no hay ruta guardada o es landing, ir a dashboard
+        if (!localStorage.getItem('last_route') || localStorage.getItem('last_route') === AppRoute.LANDING) {
+            setRoute(AppRoute.DASHBOARD);
+        }
+      }
       setLoading(false);
     });
 
@@ -199,10 +232,14 @@ const App: React.FC = () => {
       setUser(session?.user ?? null);
       if (session?.user) {
           fetchProfile(session.user.id);
-          if (event === 'SIGNED_IN') setRoute(AppRoute.DASHBOARD);
+          if (event === 'SIGNED_IN') {
+             const savedRoute = localStorage.getItem('last_route');
+             setRoute((savedRoute as AppRoute) || AppRoute.DASHBOARD);
+          }
       } else {
         setRoute(AppRoute.LANDING);
         setUserProfile(null);
+        localStorage.clear(); // Limpiar todo al cerrar sesión
       }
     });
     return () => subscription.unsubscribe();
@@ -405,7 +442,6 @@ const App: React.FC = () => {
     
     let voucherNumber = '';
     
-    // Si estamos editando, mantenemos el número original
     if (editingVoucherId) {
        const existing = generatedVouchers.find(v => v.id === editingVoucherId);
        voucherNumber = existing?.voucherNumber || '';
@@ -457,7 +493,7 @@ const App: React.FC = () => {
     if (!resultError) {
       loadData();
       setRoute(AppRoute.HISTORY);
-      resetStates();
+      resetStates(); // Aquí limpiamos el localStorage
       alert(editingVoucherId ? "Retención actualizada" : "Retención generada");
     } else { 
       alert(resultError.message); 
@@ -478,7 +514,6 @@ const App: React.FC = () => {
   const handleUpdateVoucherNumber = async () => {
     if (!currentVoucher || !userProfile) return;
     
-    // 1. Validar Formato (YYYYMM + 8 dígitos)
     const voucherRegex = /^\d{14}$/;
     if (!voucherRegex.test(tempVoucherNum)) {
       return alert("El formato debe ser YYYYMMXXXXXXXX (14 dígitos numéricos).");
@@ -488,7 +523,6 @@ const App: React.FC = () => {
 
     setIsUpdatingVoucherNum(true);
     try {
-      // 2. Validar Unicidad en la misma empresa
       const { data: existing, error: checkError } = await supabase
         .from('retentions')
         .select('id')
@@ -501,7 +535,6 @@ const App: React.FC = () => {
         throw new Error("Este número de comprobante ya existe para esta empresa.");
       }
 
-      // 3. Actualizar Comprobante
       const { error: updateError } = await supabase
         .from('retentions')
         .update({ voucher_number: tempVoucherNum })
@@ -509,7 +542,6 @@ const App: React.FC = () => {
       
       if (updateError) throw updateError;
 
-      // 4. Registrar Auditoría
       await supabase.from('retention_audit_logs').insert([{
         retention_id: currentVoucher.id,
         user_id: userProfile.id,
@@ -520,7 +552,6 @@ const App: React.FC = () => {
       alert("Número de comprobante actualizado con éxito.");
       setIsEditingVoucherNum(false);
       
-      // 5. Refrescar datos
       const updatedVoucher = { ...currentVoucher, voucherNumber: tempVoucherNum };
       setCurrentVoucher(updatedVoucher);
       loadData();
@@ -544,7 +575,6 @@ const App: React.FC = () => {
     let signatureUrl = '';
 
     try {
-      // Upload Logo
       if (logoFile && logoFile.size > 0) {
         const logoName = `logo_${Date.now()}_${logoFile.name}`;
         const { data: ld } = await supabase.storage.from('logos').upload(logoName, logoFile);
@@ -554,7 +584,6 @@ const App: React.FC = () => {
         }
       }
 
-      // Upload Signature
       if (signatureFile && signatureFile.size > 0) {
         const sigName = `sig_${Date.now()}_${signatureFile.name}`;
         const { data: sd } = await supabase.storage.from('logos').upload(sigName, signatureFile);
@@ -721,6 +750,14 @@ const App: React.FC = () => {
     setEditingVoucherId(null);
     setIsEditingVoucherNum(false);
     setSelectedTopic(null);
+    // Limpiar localStorage del borrador
+    localStorage.removeItem('wiz_step');
+    localStorage.removeItem('wiz_company');
+    localStorage.removeItem('wiz_supplier');
+    localStorage.removeItem('wiz_items');
+    localStorage.removeItem('wiz_percentage');
+    localStorage.removeItem('wiz_search_query');
+    localStorage.removeItem('wiz_editing_id');
   };
 
   const getPageTitle = (r: AppRoute) => {
@@ -742,7 +779,6 @@ const App: React.FC = () => {
     const totalRetained = generatedVouchers.reduce((acc, v) => acc + (v.items?.reduce((sum, i) => sum + i.retentionAmount, 0) || 0), 0);
     const totalIVA = generatedVouchers.reduce((acc, v) => acc + (v.items?.reduce((sum, i) => sum + i.taxAmount, 0) || 0), 0);
     
-    // Agrupar por mes (últimos 6 meses)
     const monthlyData: Record<string, number> = {};
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
@@ -767,7 +803,6 @@ const App: React.FC = () => {
     const chartValues = Object.values(monthlyData);
     const maxVal = Math.max(...chartValues, 1);
 
-    // Top proveedores
     const supplierRanking: Record<string, { name: string, total: number }> = {};
     generatedVouchers.forEach(v => {
       const sId = v.supplier?.id || 'unknown';
@@ -842,7 +877,6 @@ const App: React.FC = () => {
              </div>
 
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Gráfico de barras simple SVG */}
                 <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
                    <h3 className="font-black text-lg mb-8">Tendencia de Retención (6 meses)</h3>
                    <div className="h-64 flex items-end justify-between gap-4 px-2">
@@ -862,7 +896,6 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
-                {/* Top Proveedores */}
                 <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
                    <h3 className="font-black text-lg mb-6">Top Proveedores</h3>
                    <div className="space-y-6">
@@ -886,7 +919,6 @@ const App: React.FC = () => {
                 </div>
              </div>
 
-             {/* Actividad Reciente */}
              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
                 <div className="flex justify-between items-center mb-6">
                    <h3 className="font-black text-lg">Actividad Reciente</h3>
@@ -980,7 +1012,6 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="space-y-6">
-                    {/* Buscador de proveedores */}
                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 relative">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Buscar Proveedor Existente (Nombre o RIF)</label>
                       <div className="relative">
@@ -1258,7 +1289,6 @@ const App: React.FC = () => {
 
              {selectedTopic && (
                <div className="space-y-8 animate-fade-in-up">
-                  {/* Tema Original */}
                   <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
                      <div className="flex items-center gap-3 mb-4">
                         <span className="text-[10px] font-black uppercase px-3 py-1 bg-blue-50 text-blue-600 rounded-full">{selectedTopic.category}</span>
@@ -1277,7 +1307,6 @@ const App: React.FC = () => {
                      </div>
                   </div>
 
-                  {/* Hilo de Comentarios */}
                   <div className="space-y-4 pl-0 md:pl-12">
                      <h4 className="font-black text-slate-500 text-xs uppercase tracking-widest mb-6 flex items-center gap-2">
                         <span className="material-icons text-sm">comment</span> Respuestas ({topicComments.length})
@@ -1296,7 +1325,6 @@ const App: React.FC = () => {
                         </div>
                      ))}
 
-                     {/* Formulario de Respuesta */}
                      <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl mt-8">
                         <form onSubmit={handlePostComment} className="flex flex-col md:flex-row gap-4">
                            <textarea 
@@ -1321,7 +1349,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* MI EQUIPO (Gestión de Equipo) */}
+        {/* MI EQUIPO */}
         {route === AppRoute.USER_MANAGEMENT && userProfile?.role === 'admin' && (
           <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
              <header>
@@ -1531,18 +1559,13 @@ const App: React.FC = () => {
                            </div>
                         </div>
                       ))}
-                      {suppliers.length === 0 && (
-                        <div className="col-span-2 py-20 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
-                           <p className="text-slate-400 font-medium">No has registrado proveedores aún.</p>
-                        </div>
-                      )}
                    </div>
                 </div>
              </div>
           </div>
         )}
 
-        {/* VISTA DE COMPROBANTE (DETALLE) */}
+        {/* VISTA DE COMPROBANTE */}
         {route === AppRoute.VIEW_RETENTION && currentVoucher && (
            <div className="flex flex-col items-center animate-fade-in-up">
              <div className="w-full max-w-4xl flex flex-col md:flex-row justify-between items-center mb-8 gap-4 no-print">
@@ -1555,7 +1578,6 @@ const App: React.FC = () => {
                   </button>
                </div>
                
-               {/* Edición Segura del Número de Comprobante */}
                <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
                   {isEditingVoucherNum ? (
                     <div className="flex items-center gap-2 animate-fade-in">
@@ -1654,11 +1676,6 @@ const App: React.FC = () => {
                         </button>
                      </div>
                    ))}
-                   {companies.length === 0 && (
-                     <div className="py-20 text-center bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
-                        <p className="text-slate-400 text-sm">No hay empresas bajo este perfil.</p>
-                     </div>
-                   )}
                 </div>
               </div>
            </div>
