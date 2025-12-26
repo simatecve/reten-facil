@@ -173,6 +173,9 @@ const App: React.FC = () => {
   const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
   const [showSupplierResults, setShowSupplierResults] = useState(false);
 
+  // --- Suppliers Page Specific Search ---
+  const [supplierListSearch, setSupplierListSearch] = useState('');
+
   // --- Report Filters ---
   const [reportStartDate, setReportStartDate] = useState('');
   const [reportEndDate, setReportEndDate] = useState('');
@@ -204,6 +207,33 @@ const App: React.FC = () => {
       s.rif.toLowerCase().includes(q)
     );
   }, [suppliers, supplierSearchQuery]);
+
+  // --- Suppliers management ranking and filtering ---
+  const suppliersWithRank = useMemo(() => {
+    // Contar retenciones por proveedor
+    const counts: Record<string, number> = {};
+    generatedVouchers.forEach(v => {
+      if (v.supplier?.id) {
+        counts[v.supplier.id] = (counts[v.supplier.id] || 0) + 1;
+      }
+    });
+    
+    // Ordenar por volumen de retenciones
+    const sorted = [...suppliers].sort((a, b) => {
+      const countA = counts[a.id] || 0;
+      const countB = counts[b.id] || 0;
+      return countB - countA;
+    });
+
+    // Si hay búsqueda, filtrar de la lista total
+    if (supplierListSearch.trim()) {
+      const q = supplierListSearch.toLowerCase();
+      return suppliers.filter(s => s.name.toLowerCase().includes(q) || s.rif.toLowerCase().includes(q));
+    }
+
+    // Si no hay búsqueda, mostrar top 6
+    return sorted.slice(0, 6);
+  }, [suppliers, generatedVouchers, supplierListSearch]);
 
   const filteredReportVouchers = useMemo(() => {
     return generatedVouchers.filter(v => {
@@ -1682,8 +1712,27 @@ const App: React.FC = () => {
         {/* PROVEEDORES */}
         {route === AppRoute.SUPPLIERS && (
           <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-             <div className="flex justify-between items-center">
+             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="text-3xl font-black">Gestión de Proveedores</h2>
+                
+                {/* Filtro de búsqueda */}
+                <div className="w-full md:w-80 relative group">
+                   <div className="flex items-center bg-white border border-slate-200 rounded-2xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 transition-all shadow-sm">
+                      <span className="material-icons text-slate-400 ml-4">search</span>
+                      <input 
+                        type="text"
+                        className="w-full p-4 outline-none text-sm font-semibold text-slate-700"
+                        placeholder="Filtrar por Nombre o RIF..."
+                        value={supplierListSearch}
+                        onChange={(e) => setSupplierListSearch(e.target.value)}
+                      />
+                      {supplierListSearch && (
+                        <button onClick={() => setSupplierListSearch('')} className="p-2 mr-2 text-slate-400 hover:text-slate-600">
+                          <span className="material-icons text-sm">close</span>
+                        </button>
+                      )}
+                   </div>
+                </div>
              </div>
              
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -1724,8 +1773,19 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="lg:col-span-2 space-y-4">
+                   <div className="flex justify-between items-center px-4">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                         {supplierListSearch ? `Resultados para "${supplierListSearch}"` : "Top 6 Proveedores con más actividad"}
+                      </p>
+                      {suppliers.length > 6 && !supplierListSearch && (
+                        <p className="text-[10px] font-bold text-blue-600 uppercase tracking-tight">
+                           Usa el buscador para ver el resto ({suppliers.length})
+                        </p>
+                      )}
+                   </div>
+                   
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {suppliers.map(s => (
+                      {suppliersWithRank.map(s => (
                         <div key={s.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group">
                            <div className="flex justify-between items-start mb-4">
                               <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
@@ -1744,6 +1804,11 @@ const App: React.FC = () => {
                            </div>
                         </div>
                       ))}
+                      {suppliersWithRank.length === 0 && (
+                        <div className="col-span-1 md:col-span-2 py-20 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
+                           <p className="text-slate-400 font-medium">No se encontraron proveedores.</p>
+                        </div>
+                      )}
                    </div>
                 </div>
              </div>
