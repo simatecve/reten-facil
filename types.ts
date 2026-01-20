@@ -1,5 +1,5 @@
 
-export type UserRole = 'admin' | 'operator';
+export type UserRole = 'admin' | 'operator' | 'super_admin';
 
 export interface UserProfile {
   id: string;
@@ -9,6 +9,31 @@ export interface UserProfile {
   phone?: string;
   role: UserRole;
   admin_id?: string;
+  is_active?: boolean;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  price: number;
+  features: any;
+  limits: any;
+}
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  status: 'active' | 'cancelled' | 'past_due' | 'trialing';
+  current_period_end?: string;
+  pricing_plan?: Plan; // Joined data
+  start_date?: string;
+  end_date?: string;
+  payment_status?: 'paid' | 'pending' | 'overdue';
+  payment_method?: string;
+  payment_reference?: string;
+  payment_proof_url?: string;
+  notes?: string;
 }
 
 export interface Company {
@@ -107,5 +132,6 @@ export enum AppRoute {
   PROFILE = 'profile',
   SUPPLIERS = 'suppliers',
   COMMUNITY = 'community',
-  REPORTS = 'reports'
+  REPORTS = 'reports',
+  SUPER_ADMIN = 'super_admin'
 }
