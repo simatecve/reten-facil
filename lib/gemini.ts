@@ -10,7 +10,7 @@ const getAiClient = () => {
 };
 
 export const chatWithGemini = async (
-  history: { role: 'user' | 'model'; content: string }[], 
+  history: { role: 'user' | 'model'; content: string }[],
   newMessage: string,
   systemContext: string = ""
 ) => {
@@ -18,8 +18,8 @@ export const chatWithGemini = async (
   if (!ai) return "Error: API Key no configurada.";
 
   try {
-    // Correct Model selection based on task: Complex Text Tasks -> 'gemini-3-pro-preview'
-    const modelId = 'gemini-3-pro-preview'; 
+    // Correct Model selection based on task: Complex Text Tasks -> 'gemini-1.5-pro'
+    const modelId = 'gemini-1.5-pro';
     const chat = ai.chats.create({
       model: modelId,
       config: {
@@ -47,71 +47,72 @@ export const chatWithGemini = async (
 };
 
 export const analyzeInvoiceText = async (text: string): Promise<string> => {
-    const ai = getAiClient();
-    if (!ai) return "Error config";
+  const ai = getAiClient();
+  if (!ai) return "Error config";
 
-    try {
-        const result = await ai.models.generateContent({
-            // Correct Model selection based on task: Basic Text Tasks -> 'gemini-3-flash-preview'
-            model: 'gemini-3-flash-preview',
-            contents: `Analiza el siguiente texto que parece ser data de una factura venezolana. 
+  try {
+    const result = await ai.models.generateContent({
+      // Correct Model selection based on task: Basic Text Tasks -> 'gemini-1.5-flash'
+      model: 'gemini-1.5-flash',
+      contents: `Analiza el siguiente texto que parece ser data de una factura venezolana. 
             Extrae formato JSON: { "invoiceNumber": string, "controlNumber": string, "base": number, "iva": number, "total": number, "rif": string, "date": "YYYY-MM-DD" }.
             Si falta algún dato ponlo como string vacío o 0.
             Texto: ${text}`,
-            config: { responseMimeType: 'application/json' }
-        });
-        return result.text || "{}";
-    } catch (e) {
-        return "{}";
-    }
+      config: { responseMimeType: 'application/json' }
+    });
+    return result.text || "{}";
+  } catch (e) {
+    return "{}";
+  }
 }
 
 export const analyzeInvoiceImage = async (base64Image: string): Promise<string> => {
-    const ai = getAiClient();
-    if (!ai) return "Error config";
+  const ai = getAiClient();
+  if (!ai) return '{"isInvoice": false, "error": "config_missing"}';
 
-    try {
-        // Using gemini-3-pro-preview for high accuracy image reasoning
-        const result = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview', 
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            mimeType: 'image/jpeg',
-                            data: base64Image
-                        }
-                    },
-                    {
-                        text: `Analiza esta imagen de una factura o ticket fiscal venezolano (SENIAT).
+  try {
+    // Using gemini-1.5-flash for speed and multi-modal stability
+    const result = await ai.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64Image
+            }
+          },
+          {
+            text: `Analiza esta imagen de una factura o ticket fiscal venezolano (SENIAT).
                         Tu tarea es extraer los datos con extrema precisión para un formulario de retención de IVA.
                         
                         Extrae la siguiente información en formato JSON estricto:
                         { 
-                          "invoiceNumber": "Número de Factura (busque N° Factura, Factura, o N° de Documento)", 
-                          "controlNumber": "Número de Control. REGLA CRÍTICA: En facturas impresas busque 'N° de Control' o 'Control'. En TICKETS DE IMPRESORA FISCAL, el número de control es el código que empieza con la letra 'Z' seguido de letras y números (ej: Z7C7016648), que suele estar en la parte inferior o cerca del final del ticket.",
-                          "supplierName": "Nombre o Razón Social del proveedor/emisor",
-                          "supplierRif": "RIF del proveedor (Formato J-12345678-9)",
-                          "date": "YYYY-MM-DD (convierte la fecha encontrada a este formato ISO)",
-                          "totalAmount": number (monto total de la factura),
-                          "taxBase": number (base imponible),
-                          "taxAmount": number (monto del IVA),
-                          "taxRate": number (porcentaje alícuota, usualmente 16)
+                          "isInvoice": boolean (true si la imagen es una factura o ticket fiscal, false de lo contrario),
+                          "invoiceNumber": "Número de Factura", 
+                          "controlNumber": "Número de Control",
+                          "supplierName": "Nombre del proveedor",
+                          "supplierRif": "RIF del proveedor",
+                          "date": "YYYY-MM-DD",
+                          "totalAmount": number,
+                          "taxBase": number,
+                          "taxAmount": number,
+                          "taxRate": number
                         }
                         
                         Reglas adicionales:
-                        1. Si no encuentras un valor específico, usa null o string vacío.
-                        2. Prioriza la exactitud de los montos numéricos.
-                        3. Elimina símbolos de moneda (Bs, USD) de los números.
-                        4. El número de control 'Z' es fundamental para tickets fiscales.`
-                    }
-                ]
-            },
-            config: { responseMimeType: 'application/json' }
-        });
-        return result.text || "{}";
-    } catch (e) {
-        console.error("Error analyzing image:", e);
-        return "{}";
-    }
+                        1. Si "isInvoice" es false, deja los demás campos como null o vacíos.
+                        2. Si no encuentras un valor específico, usa null o string vacío.
+                        3. Prioriza la exactitud de los montos numéricos.
+                        4. REGLA DE ORO DEL NÚMERO DE CONTROL: Es vital para el SENIAT. Búscalo como 'N° de Control', 'Control No.', o en tickets de máquinas fiscales el código alfanumérico que empieza con 'Z'. Si ves múltiples números, el que tiene prefijo de letras suele ser el de control. No lo confundas con el número de factura.`
+          }
+        ]
+      },
+      config: { responseMimeType: 'application/json' }
+    });
+    return result.text || '{"isInvoice": false}';
+  } catch (e) {
+    console.error("Error analyzing image:", e);
+    return '{"isInvoice": false, "error": true}';
+  }
 }

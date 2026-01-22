@@ -402,16 +402,40 @@ const App: React.FC = () => {
     const file = e.target.files?.[0]; if (!file) return; setLastScannedFile(file); setIsAnalyzing(true);
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const json = await analyzeInvoiceImage((reader.result as string).split(',')[1]);
       try {
-        const d = JSON.parse(json); if (d) {
-          const s = suppliers.find(x => x.rif.replace(/\W/g, '').toUpperCase() === d.supplierRif?.replace(/\W/g, '').toUpperCase());
-          if (s) { setSelectedSupplier(s); setSupplierSearchQuery(s.name); if (s.defaultRetentionRate) setWizRetentionPercentage(s.defaultRetentionRate); }
-          else { setSelectedSupplier({ name: d.supplierName || '', rif: d.supplierRif || '', address: '' }); setSupplierSearchQuery(d.supplierName || ''); }
-          setNewItem(p => ({ ...p, invoiceNumber: d.invoiceNumber, controlNumber: d.controlNumber, totalAmount: d.totalAmount, date: d.date }));
-          if (d.invoiceNumber) setWizStep(3);
+        const json = await analyzeInvoiceImage((reader.result as string).split(',')[1]);
+        const d = JSON.parse(json);
+
+        if (!d.isInvoice) {
+          alert("La imagen no parece ser una factura válida. Por favor, intenta con otra o ingresa los datos manualmente.");
+          setIsAnalyzing(false);
+          return;
         }
-      } catch (err) { console.error(err); } setIsAnalyzing(false);
+
+        const s = suppliers.find(x => x.rif.replace(/\W/g, '').toUpperCase() === d.supplierRif?.replace(/\W/g, '').toUpperCase());
+        if (s) {
+          setSelectedSupplier(s);
+          setSupplierSearchQuery(s.name);
+          if (s.defaultRetentionRate) setWizRetentionPercentage(s.defaultRetentionRate);
+        } else {
+          setSelectedSupplier({ name: d.supplierName || '', rif: d.supplierRif || '', address: '' });
+          setSupplierSearchQuery(d.supplierName || '');
+        }
+
+        setNewItem(p => ({ ...p, invoiceNumber: d.invoiceNumber, controlNumber: d.controlNumber, totalAmount: d.totalAmount, date: d.date }));
+
+        if (d.invoiceNumber) {
+          setWizStep(3);
+        } else {
+          alert("Se detectó la factura pero no pudimos extraer el número de factura. Podrás ingresarlo manualmente en el siguiente paso.");
+          setWizStep(3);
+        }
+      } catch (err: any) {
+        console.error("Error al procesar factura:", err);
+        alert("Hubo un error al analizar la imagen: " + (err.message || "Error desconocido"));
+      } finally {
+        setIsAnalyzing(false);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -431,7 +455,7 @@ const App: React.FC = () => {
 
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault(); if (!userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'super_admin')) return;
-    setIsSavingCompany(true); const fd = new FormData(e.target as HTMLFormElement);
+    setIsSavingCompany(true); const fd = new FormData(e.currentTarget as HTMLFormElement);
     const lf = fd.get('logo') as File, sf = fd.get('signature') as File, stf = fd.get('stamp') as File;
     let lu = editingCompany?.logoUrl || '', su = editingCompany?.signatureUrl || '', stu = editingCompany?.stampUrl || '';
     try {
@@ -440,7 +464,7 @@ const App: React.FC = () => {
       if (stf?.size) stu = supabase.storage.from('logos').getPublicUrl((await supabase.storage.from('logos').upload(`stamp_${Date.now()}`, stf)).data!.path).data.publicUrl;
       const payload = { name: fd.get('name'), rif: fd.get('rif'), address: fd.get('address'), logo_url: lu, signature_url: su, stamp_url: stu, last_correlation_number: parseInt(fd.get('last_correlation_number') as string || "1") };
       const { error } = editingCompany ? await supabase.from('companies').update(payload).eq('id', editingCompany.id) : await supabase.from('companies').insert([{ ...payload, user_id: userProfile.id }]);
-      if (error) throw error; loadData(); (e.target as HTMLFormElement).reset(); setEditingCompany(null); setLogoPreview(null); setSignaturePreview(null); setStampPreview(null); alert("Éxito");
+      if (error) throw error; loadData(); (e.currentTarget as HTMLFormElement).reset(); setEditingCompany(null); setLogoPreview(null); setSignaturePreview(null); setStampPreview(null); alert("Éxito");
     } catch (err: any) { alert(err.message); } finally { setIsSavingCompany(false); }
   };
 
@@ -460,7 +484,7 @@ const App: React.FC = () => {
     if (!userProfile) return;
     setIsSavingProfile(true);
 
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(e.currentTarget as HTMLFormElement);
     const firstName = formData.get('first_name') as string;
     const phone = formData.get('phone') as string;
     const newPassword = formData.get('new_password') as string;
@@ -490,9 +514,6 @@ const App: React.FC = () => {
       });
 
       alert('Perfil actualizado con éxito');
-    } catch (err: any) {
-      console.error('Error updating profile:', err);
-      alert('Error al actualizar el perfil: ' + err.message);
     } finally {
       setIsSavingProfile(false);
     }
@@ -573,7 +594,7 @@ const App: React.FC = () => {
     setIsSavingSupplier(true);
     setIsSavingSupplier(true);
     const adminId = (userProfile.role === 'admin' || userProfile.role === 'super_admin') ? userProfile.id : userProfile.admin_id;
-    const fd = new FormData(e.currentTarget);
+    const fd = new FormData(e.currentTarget as HTMLFormElement);
     const payload = {
       user_id: adminId,
       name: fd.get('name') as string,
@@ -590,7 +611,7 @@ const App: React.FC = () => {
       if (error) throw error;
       loadData();
       setEditingSupplier(null);
-      (e.target as HTMLFormElement).reset();
+      (e.currentTarget as HTMLFormElement).reset();
       alert("Proveedor guardado con éxito");
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -667,7 +688,7 @@ const App: React.FC = () => {
                 <button className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all">
                   <span className="material-icons text-xl">chat_bubble</span>
                 </button>
-                <button onClick={() => setRoute(AppRoute.SUBSCRIPTION)} className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${route === AppRoute.SUBSCRIPTION ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}>
+                <button onClick={() => setRoute(AppRoute.SUBSCRIPTION)} className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all">
                   <span className="material-icons text-xl">settings</span>
                 </button>
               </div>
@@ -783,7 +804,12 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
             <div className="flex items-center justify-between mb-2">
               <div><h2 className="text-3xl font-black">{editingVoucherId ? 'Editar' : 'Nueva'} Retención</h2><p className="text-slate-500">Completa los 3 pasos.</p></div>
-              <div className="flex gap-2">{[1, 2, 3].map(s => (<div key={s} className={`h-2 rounded-full transition-all duration-300 ${wizStep >= s ? 'w-10 bg-blue-600' : 'w-4 bg-slate-200'}`}></div>))}</div>
+              <div className="flex items-center gap-4">
+                <button onClick={resetStates} className="text-xs font-black text-red-500 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-all flex items-center gap-1 uppercase tracking-tighter">
+                  <span className="material-icons text-sm">restart_alt</span> Reiniciar
+                </button>
+                <div className="flex gap-2">{[1, 2, 3].map(s => (<div key={s} className={`h-2 rounded-full transition-all duration-300 ${wizStep >= s ? 'w-10 bg-blue-600' : 'w-4 bg-slate-200'}`}></div>))}</div>
+              </div>
             </div>
 
             {wizStep === 1 && (
@@ -958,7 +984,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm h-fit">
                 <h3 className="font-bold text-lg mb-6">Nuevo Acceso</h3>
-                <form onSubmit={async (e) => { e.preventDefault(); const fd = new FormData(e.target as any); const email = fd.get('e') as string, pass = fd.get('p') as string, name = fd.get('n') as string; const { data } = await supabase.auth.signUp({ email, password: pass }); if (data.user) { await supabase.from('profiles').insert([{ id: data.user.id, email, first_name: name, role: 'operator', admin_id: userProfile?.id }]); loadData(); (e.target as any).reset(); alert("Acceso creado"); } }} className="space-y-4">
+                <form onSubmit={async (e) => { e.preventDefault(); const fd = new FormData(e.currentTarget as HTMLFormElement); const email = fd.get('e') as string, pass = fd.get('p') as string, name = fd.get('n') as string; const { data } = await supabase.auth.signUp({ email, password: pass }); if (data.user) { await supabase.from('profiles').insert([{ id: data.user.id, email, first_name: name, role: 'operator', admin_id: userProfile?.id }]); loadData(); (e.currentTarget as any).reset(); alert("Acceso creado"); } }} className="space-y-4">
                   <input name="n" placeholder="Nombre" className="w-full bg-slate-50 p-4 rounded-xl outline-none" required />
                   <input name="e" type="email" placeholder="Email" className="w-full bg-slate-50 p-4 rounded-xl outline-none" required />
                   <input name="p" type="password" placeholder="Clave temporal" className="w-full bg-slate-50 p-4 rounded-xl outline-none" required />
