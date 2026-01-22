@@ -224,7 +224,7 @@ const LandingPage: React.FC = () => {
 
         {/* Simple Footer */}
         <div className="absolute bottom-12 text-slate-300 text-[10px] font-black uppercase tracking-[0.2em]">
-          © 2024 RetenFácil Simatec · Venezuela
+          © 2025 RetenFácil · Venezuela
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ import LandingPage from './components/LandingPage';
 import ChatBot from './components/ChatBot';
 import RetentionVoucher from './components/RetentionVoucher';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
-import { Company, InvoiceItem, AppRoute, RetentionVoucher as VoucherType, UserProfile, UserRole, Supplier, CommunityTopic, CommunityComment } from './types';
+import { Company, InvoiceItem, AppRoute, RetentionVoucher as VoucherType, UserProfile, UserRole, Supplier, CommunityTopic, CommunityComment, Plan } from './types';
 import { analyzeInvoiceImage } from './lib/gemini';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -26,25 +26,48 @@ const Sidebar = ({
   const isAdmin = role === 'admin' || role === 'super_admin';
   const isSuperAdmin = role === 'super_admin';
 
-  const menuItems = [
-    { route: AppRoute.SUPER_ADMIN, icon: 'admin_panel_settings', label: 'Super Admin', show: isSuperAdmin },
-    { route: AppRoute.DASHBOARD, icon: 'grid_view', label: 'Dashboard', show: isAdmin },
-    { route: AppRoute.CREATE_RETENTION, icon: 'add_circle', label: 'Nueva Retención', show: true },
-    { route: AppRoute.HISTORY, icon: 'history', label: 'Historial', show: true },
-    { route: AppRoute.REPORTS, icon: 'analytics', label: 'Reportes', show: true },
-    { route: AppRoute.SUPPLIERS, icon: 'contacts', label: 'Proveedores', show: true },
-    { route: AppRoute.COMMUNITY, icon: 'forum', label: 'Comunidad', show: true },
-    { route: AppRoute.CREATE_COMPANY, icon: 'business', label: 'Empresas', show: isAdmin },
-    { route: AppRoute.USER_MANAGEMENT, icon: 'group_add', label: 'Equipo', show: isAdmin }
-  ].filter(item => item.show);
+  const menuGroups = [
+    {
+      title: 'PRINCIPAL',
+      items: [
+        { route: AppRoute.DASHBOARD, icon: 'grid_view', label: 'Dashboard', show: isAdmin },
+        { route: AppRoute.CREATE_RETENTION, icon: 'add_circle', label: 'Nueva Retención', show: true },
+      ]
+    },
+    {
+      title: 'VOUCHERS Y FISCAL',
+      items: [
+        { route: AppRoute.HISTORY, icon: 'history', label: 'Historial', show: true },
+        { route: AppRoute.REPORTS, icon: 'analytics', label: 'Reportes', show: true },
+      ]
+    },
+    {
+      title: 'DIRECTORIO',
+      items: [
+        { route: AppRoute.SUPPLIERS, icon: 'contacts', label: 'Proveedores', show: true },
+        { route: AppRoute.CREATE_COMPANY, icon: 'business', label: 'Empresas', show: isAdmin },
+        { route: AppRoute.USER_MANAGEMENT, icon: 'group_add', label: 'Equipo', show: isAdmin },
+      ]
+    },
+    {
+      title: 'SISTEMA',
+      items: [
+        { route: AppRoute.COMMUNITY, icon: 'forum', label: 'Comunidad', show: true },
+        { route: AppRoute.SUBSCRIPTION, icon: 'card_membership', label: 'Plan & Suscripción', show: isAdmin },
+        { route: AppRoute.SUPER_ADMIN, icon: 'admin_panel_settings', label: 'Super Admin', show: isSuperAdmin },
+      ]
+    }
+  ];
 
   return (
-    <div className={`hidden md:flex ${isCollapsed ? 'w-20' : 'w-72'} bg-[#0f172a] text-white flex-col h-screen fixed left-0 top-0 overflow-y-auto print:hidden z-30 transition-all duration-300 shadow-2xl border-r border-slate-800`}>
+    <div className={`hidden md:flex ${isCollapsed ? 'w-20' : 'w-72'} bg-[#0f172a] text-white flex-col h-screen fixed left-0 top-0 overflow-y-auto no-scrollbar print:hidden z-30 transition-all duration-300 shadow-2xl border-r border-slate-800`}>
       <div className={`p-8 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
         {!isCollapsed && (
           <div className="animate-fade-in">
             <h2 className="text-2xl font-black tracking-tighter text-blue-400">RETEN<span className="text-white">FÁCIL</span></h2>
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mt-1">SaaS {role}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[9px] font-black rounded-lg border border-blue-500/20 uppercase tracking-widest">{userProfile?.subscription?.pricing_plan?.name || 'Gratis'}</span>
+            </div>
           </div>
         )}
         <button onClick={toggleSidebar} className="text-slate-400 hover:text-white transition p-2 hover:bg-slate-800 rounded-xl">
@@ -52,34 +75,59 @@ const Sidebar = ({
         </button>
       </div>
 
-      <nav className="flex-1 px-4 space-y-2 mt-4">
-        {menuItems.map((item) => (
-          <button
-            key={item.route}
-            onClick={() => { setRoute(item.route); }}
-            className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all group ${currentRoute === item.route ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'} ${isCollapsed ? 'justify-center' : ''}`}
-            title={isCollapsed ? item.label : ''}
-          >
-            <span className="material-icons text-xl">{item.icon}</span>
-            {!isCollapsed && <span>{item.label}</span>}
-          </button>
-        ))}
+      <nav className="flex-1 px-4 mt-2 space-y-6 pb-8">
+        {menuGroups.map((group, gIdx) => {
+          const visibleItems = group.items.filter(i => i.show);
+          if (visibleItems.length === 0) return null;
 
-        <button
-          onClick={() => { setRoute(AppRoute.PROFILE); }}
-          className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all group ${currentRoute === AppRoute.PROFILE ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'} ${isCollapsed ? 'justify-center' : ''}`}
-          title={isCollapsed ? "Mi Perfil" : ''}
-        >
-          <span className="material-icons text-xl">account_circle</span>
-          {!isCollapsed && <span>Mi Perfil</span>}
-        </button>
+          return (
+            <div key={gIdx} className="space-y-1">
+              {!isCollapsed && (
+                <p className="px-4 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3 ml-1">
+                  {group.title}
+                </p>
+              )}
+              {visibleItems.map((item) => (
+                <button
+                  key={item.route}
+                  onClick={() => { setRoute(item.route); }}
+                  className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-sm font-semibold transition-all group ${currentRoute === item.route ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'} ${isCollapsed ? 'justify-center' : ''}`}
+                  title={isCollapsed ? item.label : ''}
+                >
+                  <span className="material-icons text-xl">{item.icon}</span>
+                  {!isCollapsed && <span className="truncate">{item.label}</span>}
+                </button>
+              ))}
+            </div>
+          );
+        })}
       </nav>
 
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        {!isCollapsed && (
+          <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-black text-sm">
+                {userProfile?.first_name?.[0] || 'U'}
+              </div>
+              <div className="flex-1 truncate">
+                <p className="font-bold text-sm truncate">{userProfile?.first_name || 'Usuario'}</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{role}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <button onClick={handleLogout} className={`flex items-center gap-3 text-slate-400 hover:text-red-400 font-bold text-sm w-full p-3 rounded-2xl transition-all hover:bg-red-400/10 ${isCollapsed ? 'justify-center' : ''}`}>
           <span className="material-icons">logout</span>
           {!isCollapsed && <span>Cerrar Sesión</span>}
         </button>
+
+        {!isCollapsed && (
+          <div className="pt-2 text-center">
+            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">v1.0 21-01</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -142,6 +190,7 @@ const App: React.FC = () => {
   const [generatedVouchers, setGeneratedVouchers] = useState<VoucherType[]>([]);
   const [currentVoucher, setCurrentVoucher] = useState<VoucherType | null>(null);
   const [subUsers, setSubUsers] = useState<UserProfile[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
 
   // Community States
   const [topics, setTopics] = useState<CommunityTopic[]>([]);
@@ -263,6 +312,7 @@ const App: React.FC = () => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
+  const [isUpgradingPlan, setIsUpgradingPlan] = useState(false);
   const [isEditingVoucherNum, setIsEditingVoucherNum] = useState(false);
   const [tempVoucherNum, setTempVoucherNum] = useState('');
   const [isUpdatingVoucherNum, setIsUpdatingVoucherNum] = useState(false);
@@ -315,8 +365,15 @@ const App: React.FC = () => {
     const { data: rets } = await supabase.from('retentions').select('*, companies(*), suppliers(*)').eq('user_id', adminId).order('created_at', { ascending: false });
     if (rets) setGeneratedVouchers(rets.map(r => ({ id: r.id, voucherNumber: r.voucher_number, date: r.date, fiscalPeriod: r.fiscal_period, invoiceUrl: r.invoice_url, retentionPercentage: r.retention_percentage, company: r.companies, supplier: r.suppliers, items: r.items })));
     if (userProfile.role === 'admin' || userProfile.role === 'super_admin') {
-      const { data: subs } = await supabase.from('profiles').select('*').eq('admin_id', userProfile.id);
-      if (subs) setSubUsers(subs);
+      const { data: subsProf } = await supabase.from('profiles').select('*').eq('admin_id', userProfile.id);
+      if (subsProf) setSubUsers(subsProf);
+
+      const { data: plansData } = await supabase.from('plans').select('*').order('price');
+      if (plansData) setPlans(plansData);
+    }
+    const { data: currentSub } = await supabase.from('subscriptions').select('*, pricing_plan:plans(*)').eq('user_id', adminId).single();
+    if (currentSub) {
+      setUserProfile(prev => prev ? ({ ...prev, subscription: currentSub }) : null);
     }
     fetchCommunityTopics();
   };
@@ -441,6 +498,25 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpgradePlan = async (planId: string) => {
+    if (!userProfile?.subscription?.id) return alert("No se encontró una suscripción activa para actualizar.");
+    if (!confirm("¿Estás seguro de que deseas cambiar a este plan?")) return;
+
+    setIsUpgradingPlan(true);
+    const { error } = await supabase
+      .from('subscriptions')
+      .update({ plan_id: planId, status: 'active' })
+      .eq('id', userProfile.subscription.id);
+
+    if (error) {
+      alert("Error al actualizar el plan: " + error.message);
+    } else {
+      alert("Plan actualizado con éxito. Refrescando datos...");
+      await loadData();
+    }
+    setIsUpgradingPlan(false);
+  };
+
   // --- Reportes y Exportación ---
   const exportReportToPdf = async () => {
     if (!reportRef.current) return;
@@ -563,45 +639,139 @@ const App: React.FC = () => {
       <MobileBottomNav currentRoute={route} setRoute={setRoute} resetStates={resetStates} role={userProfile?.role} />
       <Sidebar currentRoute={route} setRoute={setRoute} handleLogout={() => supabase.auth.signOut()} resetStates={resetStates} isCollapsed={isSidebarCollapsed} toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} role={userProfile?.role || 'operator'} />
 
-      <main className={`flex-1 transition-all duration-300 pb-24 md:pb-8 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} p-4 md:p-8`}>
+      <main className={`flex-1 transition-all duration-300 pb-32 md:pb-8 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} p-4 md:p-8 overflow-x-hidden`}>
 
-        {/* DASHBOARD */}
+        {/* DASHBOARD PREMIUM */}
         {route === AppRoute.DASHBOARD && (
-          <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-              <div><h1 className="text-4xl font-black text-slate-900 tracking-tight">Hola, {userProfile?.first_name}</h1><p className="text-slate-500 font-medium">Resumen fiscal de actividad.</p></div>
-              <button onClick={() => setRoute(AppRoute.CREATE_RETENTION)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-all"><span className="material-icons">add_circle</span> Nueva Retención</button>
+          <div className="max-w-6xl mx-auto space-y-10 animate-fade-in pt-4 md:pt-0">
+            {/* Header iBanKo Style */}
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex items-center gap-5">
+                <div className="w-16 h-16 rounded-[1.5rem] bg-indigo-600 flex items-center justify-center text-white shadow-xl shadow-indigo-100 overflow-hidden relative group cursor-pointer">
+                  {userProfile?.first_name?.[0] || 'S'}
+                  <div className="absolute inset-0 bg-blue-400 mix-blend-overlay opacity-20"></div>
+                </div>
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-none">Hola, {userProfile?.first_name || 'Steward'} 👋</h1>
+                  <p className="text-slate-400 font-bold text-sm mt-2 uppercase tracking-wide">Gestiona tu fiscalidad hoy</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-100 shadow-sm self-start md:self-auto">
+                <button className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                  <span className="material-icons text-xl">search</span>
+                </button>
+                <button className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                  <span className="material-icons text-xl">notifications</span>
+                </button>
+                <button className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                  <span className="material-icons text-xl">chat_bubble</span>
+                </button>
+                <button onClick={() => setRoute(AppRoute.SUBSCRIPTION)} className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${route === AppRoute.SUBSCRIPTION ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}>
+                  <span className="material-icons text-xl">settings</span>
+                </button>
+              </div>
+            </header>
+
+            {/* Quick Actions Card Style */}
+            <div className="bg-[#0f172a] p-8 md:p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
+              {/* Background Decoration */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full -mr-32 -mt-32 blur-[80px]"></div>
+              <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-600/10 rounded-full -ml-16 -mb-16 blur-[40px]"></div>
+
+              <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                <div>
+                  <p className="text-blue-400 text-xs font-black uppercase tracking-[0.2em] mb-2">Acciones Rápidas</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-white">Generar Nuevo Voucher</h2>
+                  <p className="text-slate-400 mt-2 text-sm font-medium">Automatiza tus retenciones en menos de 2 minutos.</p>
+                </div>
+                <div className="flex items-center gap-4 flex-wrap justify-center">
+                  <button onClick={() => setRoute(AppRoute.CREATE_RETENTION)} className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-2 transition-all hover:scale-105 active:scale-95">
+                    <span className="material-icons text-indigo-600">add</span> Nueva Retención
+                  </button>
+
+                  {/* Plan Restricted Button Demo */}
+                  <div className="relative group/btn">
+                    <button className="bg-slate-800/80 text-slate-400 border border-slate-700 px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-2 cursor-not-allowed">
+                      <span className="material-icons text-slate-600">auto_awesome</span> Análisis IA
+                      <span className="material-icons text-xs text-slate-600">lock</span>
+                    </button>
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 px-4 py-2 bg-indigo-600 text-white text-[10px] font-black rounded-xl opacity-0 group-hover/btn:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl">
+                      DISPONIBLE EN PLAN PRO 🚀
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[{ l: 'Total Retenido', v: dashboardStats.totalRetained, i: 'account_balance_wallet' }, { l: 'IVA Gestionado', v: dashboardStats.totalIVA, i: 'receipt_long' }, { l: 'Proveedores', v: suppliers.length, i: 'people' }, { l: 'Vouchers', v: generatedVouchers.length, i: 'description' }].map((s, idx) => (
-                <div key={idx} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden group">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{s.l}</p>
-                  <p className="text-3xl font-black mt-1">{s.v.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</p>
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><span className="material-icons text-6xl">{s.i}</span></div>
+
+            {/* Financial Status iBanKo Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                { l: 'Total Retenido', v: dashboardStats.totalRetained, i: 'payments', c: 'bg-emerald-50 text-emerald-600' },
+                { l: 'IVA Gestionado', v: dashboardStats.totalIVA, i: 'receipt_long', c: 'bg-indigo-50 text-indigo-600' },
+                { l: 'Proveedores', v: suppliers.length, i: 'person', c: 'bg-orange-50 text-orange-600' },
+                { l: 'Vouchers Gen.', v: generatedVouchers.length, i: 'description', c: 'bg-blue-50 text-blue-600' }
+              ].map((s, idx) => (
+                <div key={idx} className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                  <div className={`w-12 h-12 rounded-2xl ${s.c} flex items-center justify-center mb-6`}>
+                    <span className="material-icons">{s.i}</span>
+                  </div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-3">{s.l}</p>
+                  <p className="text-2xl font-black text-slate-900">{typeof s.v === 'number' ? s.v.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : s.v} {idx < 2 ? 'Bs' : ''}</p>
+                  <div className="flex items-center gap-1 mt-3">
+                    <span className="material-icons text-emerald-500 text-sm">trending_up</span>
+                    <span className="text-[10px] font-black text-emerald-500 tracking-tight">10% este mes</span>
+                  </div>
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="font-black text-lg mb-8">Tendencia (6 meses)</h3>
-                <div className="h-64 flex items-end justify-between gap-4">
+
+            {/* Secondary Section Style */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+              <div className="lg:col-span-2 bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 relative overflow-hidden group">
+                <div className="flex items-center justify-between mb-10">
+                  <h3 className="font-black text-xl text-slate-900">Registro Financiero</h3>
+                  <select className="bg-slate-50 border-none text-[10px] font-black uppercase tracking-widest p-2 rounded-xl outline-none cursor-pointer hover:bg-slate-100 transition-colors">
+                    <option>Este Mes</option>
+                    <option>Año 2024</option>
+                  </select>
+                </div>
+                <div className="h-72 flex items-end justify-between gap-6 px-4">
                   {dashboardStats.chartValues.map((val, idx) => (
-                    <div key={idx} className="flex-1 flex flex-col items-center group relative">
-                      <div className="w-full bg-blue-100 group-hover:bg-blue-600 rounded-t-xl transition-all duration-500" style={{ height: `${(val / dashboardStats.maxVal) * 100}%` }}></div>
-                      <p className="text-[10px] font-bold text-slate-400 mt-4 uppercase">{dashboardStats.chartLabels[idx]}</p>
+                    <div key={idx} className="flex-1 flex flex-col items-center group/bar relative">
+                      <div className="w-full bg-slate-50 group-hover/bar:bg-indigo-600 rounded-2xl transition-all duration-500 relative min-h-[4px]" style={{ height: `${(val / dashboardStats.maxVal) * 90}%` }}>
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-opacity pointer-events-none">
+                          Bs {val.toLocaleString()}
+                        </div>
+                      </div>
+                      <p className="text-[9px] font-black text-slate-300 mt-6 uppercase group-hover/bar:text-slate-900 transition-colors">{dashboardStats.chartLabels[idx]}</p>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="font-black text-lg mb-6">Top Proveedores</h3>
-                <div className="space-y-6">
-                  {dashboardStats.topSuppliers.map((s, i) => (
-                    <div key={i} className="space-y-2">
-                      <div className="flex justify-between text-xs font-bold uppercase"><span className="truncate max-w-[150px]">{s.name}</span><span>Bs {s.total.toLocaleString()}</span></div>
-                      <div className="w-full h-2 bg-slate-50 rounded-full overflow-hidden"><div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${(s.total / Math.max(...dashboardStats.topSuppliers.map(p => p.total), 1)) * 100}%` }}></div></div>
+
+              <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="font-black text-xl text-slate-900">Proveedores</h3>
+                  <span className="text-[10px] font-black text-blue-600 uppercase cursor-pointer hover:underline">Ver Todos</span>
+                </div>
+                <div className="space-y-8">
+                  {dashboardStats.topSuppliers.length > 0 ? dashboardStats.topSuppliers.map((s, i) => (
+                    <div key={i} className="flex items-center gap-4 group">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
+                        <span className="material-icons">business</span>
+                      </div>
+                      <div className="flex-1 truncate">
+                        <p className="font-black text-sm text-slate-900 truncate tracking-tight">{s.name}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Total: Bs {s.total.toLocaleString()}</p>
+                      </div>
+                      <span className="material-icons text-slate-200 text-sm">chevron_right</span>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="text-center py-10">
+                      <p className="text-slate-300 font-bold text-xs">Sin transacciones registradas</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1078,6 +1248,147 @@ const App: React.FC = () => {
         {/* SUPER ADMIN DASHBOARD */}
         {route === AppRoute.SUPER_ADMIN && userProfile?.role === 'super_admin' && (
           <SuperAdminDashboard />
+        )}
+
+        {route === AppRoute.SUBSCRIPTION && (
+          <div className="max-w-4xl mx-auto space-y-10 animate-fade-in">
+            <header>
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">Mi Suscripción</h2>
+              <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">Detalles del plan y facturación</p>
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {/* Current Plan Card */}
+              <div className="md:col-span-2 space-y-8">
+                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16"></div>
+
+                  <div className="relative z-10">
+                    <h3 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-6">Plan Actual</h3>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-4xl font-black text-slate-900">{userProfile?.subscription?.pricing_plan?.name || 'Gratis'}</p>
+                        <p className="text-slate-400 font-medium mt-1">Bs {(userProfile?.subscription?.pricing_plan?.price || 0).toLocaleString()} / mes</p>
+                      </div>
+                      <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-tight">
+                        {userProfile?.subscription?.status === 'active' ? 'Estado: Activo' : 'Estado: Pendiente'}
+                      </div>
+                    </div>
+
+                    <div className="mt-10 grid grid-cols-2 gap-6 pt-8 border-t border-slate-50">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Registro</p>
+                        <p className="font-bold text-slate-900">{userProfile?.subscription?.start_date ? new Date(userProfile.subscription.start_date).toLocaleDateString() : 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Próximo Vencimiento</p>
+                        <p className="font-bold text-slate-900">{userProfile?.subscription?.end_date ? new Date(userProfile.subscription.end_date).toLocaleDateString() : 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Features checklist */}
+                <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 rounded-full -mr-24 -mt-24 blur-3xl"></div>
+                  <h3 className="text-sm font-black text-blue-400 uppercase tracking-widest mb-8">Incluido en tu plan</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {userProfile?.subscription?.pricing_plan?.features ? Object.entries(userProfile.subscription.pricing_plan.features).map(([k, v]) => {
+                      const featureNames: Record<string, string> = {
+                        ai_invoice_analysis: 'Análisis de Facturas con IA',
+                        ai_copilot: 'Asistente Fiscal Co-Pilot',
+                        custom_branding: 'Marca Personalizada',
+                        team_collaboration: 'Colaboración en Equipo',
+                        advanced_reports: 'Reportes Avanzados',
+                        priority_support: 'Soporte Prioritario'
+                      };
+                      return (
+                        <div key={k} className="flex items-center gap-3 text-sm font-medium">
+                          <span className={`material-icons text-sm ${v ? 'text-blue-400' : 'text-slate-600'}`}>
+                            {v ? 'check_circle' : 'cancel'}
+                          </span>
+                          <span className={v ? 'text-white' : 'text-slate-500'}>{featureNames[k] || k.replace(/_/g, ' ').toUpperCase()}</span>
+                        </div>
+                      );
+                    }) : <p className="text-slate-500 text-sm">No hay características definidas.</p>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Info Sidebar */}
+              <div className="space-y-6">
+                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm text-center">
+                  <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <span className="material-icons text-3xl">help_outline</span>
+                  </div>
+                  <h4 className="font-black text-slate-900">¿Necesitas Ayuda?</h4>
+                  <p className="text-sm text-slate-400 mt-2 font-medium">Si tienes dudas sobre tu facturación o plan actual.</p>
+                  <button className="w-full bg-slate-50 text-slate-900 font-black text-xs py-3 rounded-xl mt-6 hover:bg-slate-100 transition-colors uppercase tracking-widest">Contactar Soporte</button>
+                </div>
+
+                <div className="bg-indigo-600 p-8 rounded-[2rem] text-white shadow-xl shadow-indigo-100 relative overflow-hidden group">
+                  <div className="relative z-10">
+                    <h4 className="font-black">Upgrade Sugerido</h4>
+                    <p className="text-xs text-indigo-100 mt-2 font-medium">Desbloquea análisis de IA avanzado y soporte prioritario.</p>
+                    <button className="bg-white text-indigo-600 font-black text-xs py-3 px-6 rounded-xl mt-6 hover:scale-105 active:scale-95 transition-all uppercase tracking-widest">Ver Todos los Planes</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Available Plans Section */}
+            <section className="pt-10 space-y-8">
+              <div className="flex items-end justify-between px-2">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900">Planes Disponibles</h3>
+                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">Escala tu negocio con RetenFácil</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {plans.map(plan => {
+                  const isCurrent = userProfile?.subscription?.plan_id === plan.id;
+                  return (
+                    <div key={plan.id} className={`bg-white p-8 rounded-[2.5rem] border ${isCurrent ? 'border-blue-500 shadow-blue-50' : 'border-slate-100'} shadow-sm relative group hover:shadow-xl transition-all duration-300`}>
+                      {isCurrent && (
+                        <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">Actual</span>
+                      )}
+                      <h4 className="text-xl font-black text-slate-900">{plan.name}</h4>
+                      <div className="mt-4 flex items-baseline gap-1">
+                        <span className="text-3xl font-black text-slate-900">Bs {plan.price.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">/ mes</span>
+                      </div>
+                      <div className="mt-8 space-y-4">
+                        {Object.entries(plan.features || {}).slice(0, 4).map(([k, v]) => {
+                          const featureNamesShort: Record<string, string> = {
+                            ai_invoice_analysis: 'Análisis IA',
+                            ai_copilot: 'Co-Pilot IA',
+                            custom_branding: 'Marca Propia',
+                            team_collaboration: 'Multi-usuario',
+                            advanced_reports: 'Reportes Pro',
+                            priority_support: 'Soporte 24/7'
+                          };
+                          return (
+                            <div key={k} className="flex items-center gap-2">
+                              <span className={`material-icons text-sm ${v ? 'text-blue-500' : 'text-slate-200'}`}>{v ? 'check_circle' : 'block'}</span>
+                              <span className={`text-[10px] font-black uppercase tracking-tight ${v ? 'text-slate-600' : 'text-slate-300'}`}>{featureNamesShort[k] || k}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={() => handleUpgradePlan(plan.id)}
+                        disabled={isCurrent || isUpgradingPlan}
+                        className={`w-full mt-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${isCurrent ? 'bg-slate-50 text-slate-400 cursor-default' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-lg active:scale-95'}`}
+                      >
+                        {isCurrent ? 'Tu Plan' : (isUpgradingPlan ? 'Actualizando...' : 'Cambiar a este Plan')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
         )}
 
         <ChatBot userProfile={userProfile} companies={companies} recentVouchers={generatedVouchers} />

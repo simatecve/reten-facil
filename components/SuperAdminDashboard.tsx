@@ -159,18 +159,18 @@ const SuperAdminDashboard = () => {
     if (loading) return <div className="p-10 text-center">Cargando panel de control...</div>;
 
     return (
-        <div className="max-w-7xl mx-auto p-8 font-sans text-slate-900">
-            <header className="mb-10 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto p-4 md:p-8 font-sans text-slate-900 overflow-x-hidden">
+            <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
-                    <h1 className="text-4xl font-black tracking-tight text-slate-900">Super Admin</h1>
+                    <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">Super Admin</h1>
                     <p className="text-slate-500 font-medium">Gestión global del sistema.</p>
                 </div>
-                <div className="flex gap-2 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto w-full md:w-auto no-scrollbar">
                     {(['overview', 'plans', 'users', 'subscriptions'] as const).map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`px-6 py-3 rounded-xl font-bold text-sm transition-all ${activeTab === tab ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-700'}`}
+                            className={`px-4 md:px-6 py-2.5 md:py-3 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap ${activeTab === tab ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-700'}`}
                         >
                             {tab.charAt(0).toUpperCase() + tab.slice(1)}
                         </button>

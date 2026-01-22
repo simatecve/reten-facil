@@ -10,6 +10,7 @@ export interface UserProfile {
   role: UserRole;
   admin_id?: string;
   is_active?: boolean;
+  subscription?: Subscription;
 }
 
 export interface Plan {
@@ -133,5 +134,6 @@ export enum AppRoute {
   SUPPLIERS = 'suppliers',
   COMMUNITY = 'community',
   REPORTS = 'reports',
-  SUPER_ADMIN = 'super_admin'
+  SUPER_ADMIN = 'super_admin',
+  SUBSCRIPTION = 'subscription'
 }
