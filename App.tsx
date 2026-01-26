@@ -125,7 +125,7 @@ const Sidebar = ({
 
         {!isCollapsed && (
           <div className="pt-2 text-center">
-            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">v1.0 21-01</p>
+            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">v1.1 26-01</p>
           </div>
         )}
       </div>
