@@ -407,7 +407,11 @@ const App: React.FC = () => {
         const d = JSON.parse(json);
 
         if (!d.isInvoice) {
-          alert("La imagen no parece ser una factura válida. Por favor, intenta con otra o ingresa los datos manualmente.");
+          if (d.error === "config_missing") {
+            alert("⚠️ Error de Configuración: La API Key de Gemini no está configurada en el servidor. Por favor, contacta al administrador.");
+          } else {
+            alert("La imagen no parece ser una factura válida o está muy borrosa. Por favor, intenta con otra o ingresa los datos manualmente.");
+          }
           setIsAnalyzing(false);
           return;
         }

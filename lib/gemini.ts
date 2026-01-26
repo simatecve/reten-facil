@@ -2,16 +2,20 @@
 import { GoogleGenAI } from "@google/genai";
 
 const getAiClient = () => {
+  // En producción (Vite build), las variables se inyectan en tiempo de construcción.
+  // Si no están presentes en el servidor de despliegue, pueden quedar vacías.
   const apiKey =
-    (import.meta.env?.VITE_GEMINI_API_KEY) ||
-    (process.env.GEMINI_API_KEY) ||
-    (process.env.API_KEY);
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : null) ||
+    (typeof process !== 'undefined' ? process.env.API_KEY : null) ||
+    (window as any).VITE_GEMINI_API_KEY; // Posible inyección vía script en index.html
 
-  if (!apiKey || apiKey === "undefined") {
-    console.error("Gemini API Key missing or undefined. Check .env and Vite config.");
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    console.warn("⚠️ Advertencia: Gemini API Key no encontrada.");
+    console.info("Asegúrate de configurar VITE_GEMINI_API_KEY en las variables de entorno de tu servidor (Vercel, Netlify, etc.) y reconstruir el proyecto.");
     return null;
   }
-  // Esta librería específica requiere un objeto con { apiKey }
+
   return new GoogleGenAI({ apiKey });
 };
 
