@@ -441,16 +441,98 @@ const App: React.FC = () => {
   };
 
   const generateVoucher = async () => {
-    if (!userProfile || !selectedCompany || !selectedSupplier || !wizItems.length) return;
+    if (!userProfile || !selectedCompany || !selectedSupplier || !wizItems.length) {
+      alert("Faltan datos críticos (Empresa, Proveedor o Facturas). Por favor verifica los pasos anteriores.");
+      return;
+    }
 
-    const adminId = (userProfile.role === 'admin' || userProfile.role === 'super_admin') ? userProfile.id : userProfile.admin_id;
-    let sId = selectedSupplier.id;
-    if (!sId) { const { data: ns } = await supabase.from('suppliers').insert([{ user_id: adminId, name: selectedSupplier.name, rif: selectedSupplier.rif, address: selectedSupplier.address || '' }]).select().single(); if (ns) sId = ns.id; }
-    const now = new Date(), period = `${now.getFullYear()} ${String(now.getMonth() + 1).padStart(2, '0')}`, vNum = editingVoucherId ? generatedVouchers.find(v => v.id === editingVoucherId)?.voucherNumber : `${period.replace(' ', '')}${String(selectedCompany.lastCorrelationNumber || 1).padStart(8, '0')}`;
-    let url = ''; if (lastScannedFile) { const { data } = await supabase.storage.from('facturas').upload(`${vNum}_${Date.now()}.jpg`, lastScannedFile); if (data) url = supabase.storage.from('facturas').getPublicUrl(data.path).data.publicUrl; }
-    const p = { user_id: adminId, company_id: selectedCompany.id, supplier_id: sId, supplier_name: selectedSupplier.name, supplier_rif: selectedSupplier.rif, items: wizItems, voucher_number: vNum, control_number: wizItems[0].controlNumber, invoice_url: url || (editingVoucherId ? generatedVouchers.find(v => v.id === editingVoucherId)?.invoiceUrl : ''), retention_percentage: wizRetentionPercentage, date: now.toISOString().split('T')[0], fiscal_period: period };
-    const { error } = editingVoucherId ? await supabase.from('retentions').update(p).eq('id', editingVoucherId) : await supabase.from('retentions').insert([p]);
-    if (!error) { if (!editingVoucherId) await supabase.from('companies').update({ last_correlation_number: (selectedCompany.lastCorrelationNumber || 1) + 1 }).eq('id', selectedCompany.id); loadData(); setRoute(AppRoute.HISTORY); resetStates(); }
+    try {
+      const adminId = (userProfile.role === 'admin' || userProfile.role === 'super_admin') ? userProfile.id : userProfile.admin_id;
+      let sId = selectedSupplier.id;
+
+      // Si el proveedor es nuevo (no tiene ID), lo creamos primero
+      if (!sId) {
+        const { data: ns, error: sErr } = await supabase.from('suppliers').insert([{
+          user_id: adminId,
+          name: selectedSupplier.name,
+          rif: selectedSupplier.rif,
+          address: selectedSupplier.address || ''
+        }]).select().single();
+
+        if (sErr) throw new Error(`Error al crear proveedor: ${sErr.message}`);
+        if (ns) sId = ns.id;
+      }
+
+      const now = new Date();
+      const period = `${now.getFullYear()} ${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const vNum = editingVoucherId
+        ? generatedVouchers.find(v => v.id === editingVoucherId)?.voucherNumber
+        : `${period.replace(' ', '')}${String(selectedCompany.lastCorrelationNumber || 1).padStart(8, '0')}`;
+
+      // Subir imagen si existe
+      let url = '';
+      if (lastScannedFile) {
+        const filePath = `${vNum}_${Date.now()}.jpg`;
+        const { data: uploadData, error: uploadErr } = await supabase.storage.from('facturas').upload(filePath, lastScannedFile);
+        if (uploadErr) {
+          console.warn("No se pudo subir la imagen, pero continuaremos guardando los datos:", uploadErr.message);
+        } else if (uploadData) {
+          url = supabase.storage.from('facturas').getPublicUrl(uploadData.path).data.publicUrl;
+        }
+      }
+
+      const totals = wizItems.reduce((acc, item) => ({
+        purchase: acc.purchase + (item.totalAmount || 0),
+        tax: acc.tax + (item.taxAmount || 0),
+        retained: acc.retained + (item.retentionAmount || 0)
+      }), { purchase: 0, tax: 0, retained: 0 });
+
+      const payload = {
+        user_id: adminId,
+        company_id: selectedCompany.id,
+        supplier_id: sId,
+        supplier_name: selectedSupplier.name,
+        supplier_rif: selectedSupplier.rif,
+        items: wizItems,
+        voucher_number: vNum,
+        control_number: wizItems[0]?.controlNumber || '00',
+        invoice_url: url || (editingVoucherId ? generatedVouchers.find(v => v.id === editingVoucherId)?.invoiceUrl : ''),
+        retention_percentage: wizRetentionPercentage,
+        date: now.toISOString().split('T')[0],
+        fiscal_period: period,
+        fiscal_year: now.getFullYear().toString(),
+        fiscal_month: String(now.getMonth() + 1).padStart(2, '0'),
+        total_purchase: Number(totals.purchase.toFixed(2)),
+        total_tax: Number(totals.tax.toFixed(2)),
+        total_retained: Number(totals.retained.toFixed(2))
+      };
+
+      console.log("Intentando guardar comprobante:", payload);
+
+      const { data, error: retErr } = editingVoucherId
+        ? await supabase.from('retentions').update(payload).eq('id', editingVoucherId).select()
+        : await supabase.from('retentions').insert([payload]).select();
+
+      if (retErr) throw new Error(`Error al guardar retención: ${retErr.message}`);
+
+      // Actualizar el correlativo de la empresa si es un voucher nuevo
+      if (!editingVoucherId) {
+        const { error: compErr } = await supabase
+          .from('companies')
+          .update({ last_correlation_number: (selectedCompany.lastCorrelationNumber || 1) + 1 })
+          .eq('id', selectedCompany.id);
+        if (compErr) console.error("Error actualizando correlativo:", compErr.message);
+      }
+
+      alert("¡Comprobante emitido con éxito!");
+      await loadData();
+      setRoute(AppRoute.HISTORY);
+      resetStates();
+
+    } catch (err: any) {
+      console.error("Falla en generateVoucher:", err);
+      alert(err.message || "Ocurrió un error inesperado al generar el comprobante.");
+    }
   };
 
   const handleCreateCompany = async (e: React.FormEvent) => {

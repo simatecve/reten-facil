@@ -2,11 +2,17 @@
 import { GoogleGenAI } from "@google/genai";
 
 const getAiClient = () => {
-  if (!process.env.API_KEY) {
-    console.warn("Gemini API Key missing in process.env.API_KEY");
+  const apiKey =
+    (import.meta.env?.VITE_GEMINI_API_KEY) ||
+    (process.env.GEMINI_API_KEY) ||
+    (process.env.API_KEY);
+
+  if (!apiKey || apiKey === "undefined") {
+    console.error("Gemini API Key missing or undefined. Check .env and Vite config.");
     return null;
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Esta librería específica requiere un objeto con { apiKey }
+  return new GoogleGenAI({ apiKey });
 };
 
 export const chatWithGemini = async (
@@ -18,49 +24,43 @@ export const chatWithGemini = async (
   if (!ai) return "Error: API Key no configurada.";
 
   try {
-    // Correct Model selection based on task: Complex Text Tasks -> 'gemini-1.5-pro'
-    const modelId = 'gemini-1.5-pro';
-    const chat = ai.chats.create({
-      model: modelId,
+    const response = await ai.models.generateContent({
+      model: 'gemini-1.5-pro',
       config: {
         systemInstruction: `Eres un asistente experto en contabilidad y leyes tributarias de Venezuela, específicamente sobre retenciones de IVA (SENIAT). 
-        Ayuda al usuario a entender cómo llenar el comprobante, qué porcentajes aplicar (75% o 100%) y valida sus dudas.
-        
-        CONTEXTO ACTUAL DEL SISTEMA Y USUARIO:
-        ${systemContext}
-        
-        Usa este contexto para dar respuestas personalizadas. Si te preguntan por una empresa o retención específica, busca en el contexto provisto.
-        Responde en español de forma concisa y profesional.`,
+          Ayuda al usuario a entender cómo llenar el comprobante y valida sus dudas.
+          CONTEXTO: ${systemContext}`
       },
-      history: history.map(h => ({
-        role: h.role,
-        parts: [{ text: h.content }]
-      }))
+      contents: [
+        ...history.map(h => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          parts: [{ text: h.content }]
+        })),
+        { role: 'user', parts: [{ text: newMessage }] }
+      ]
     });
 
-    const result = await chat.sendMessage({ message: newMessage });
-    return result.text;
-  } catch (error) {
+    return response.text || "No recibí respuesta.";
+  } catch (error: any) {
     console.error("Gemini Error:", error);
-    return "Lo siento, hubo un error al procesar tu consulta con la IA.";
+    return "Error al procesar consulta.";
   }
 };
 
 export const analyzeInvoiceText = async (text: string): Promise<string> => {
   const ai = getAiClient();
-  if (!ai) return "Error config";
+  if (!ai) return "{}";
 
   try {
-    const result = await ai.models.generateContent({
-      // Correct Model selection based on task: Basic Text Tasks -> 'gemini-1.5-flash'
+    const response = await ai.models.generateContent({
       model: 'gemini-1.5-flash',
-      contents: `Analiza el siguiente texto que parece ser data de una factura venezolana. 
-            Extrae formato JSON: { "invoiceNumber": string, "controlNumber": string, "base": number, "iva": number, "total": number, "rif": string, "date": "YYYY-MM-DD" }.
-            Si falta algún dato ponlo como string vacío o 0.
-            Texto: ${text}`,
-      config: { responseMimeType: 'application/json' }
+      config: { responseMimeType: 'application/json' },
+      contents: [{
+        role: 'user',
+        parts: [{ text: `Analiza este texto y extrae JSON fiscal venezolano: ${text}` }]
+      }]
     });
-    return result.text || "{}";
+    return response.text || "{}";
   } catch (e) {
     return "{}";
   }
@@ -71,48 +71,49 @@ export const analyzeInvoiceImage = async (base64Image: string): Promise<string> 
   if (!ai) return '{"isInvoice": false, "error": "config_missing"}';
 
   try {
-    // Using gemini-1.5-flash for speed and multi-modal stability
-    const result = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: {
+    // ACTUALIZADO A GEMINI 2.0 FLASH PARA MEJOR OCR
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      config: {
+        responseMimeType: 'application/json'
+      },
+      contents: [{
+        role: 'user',
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg',
+              mimeType: 'image/png',
               data: base64Image
             }
           },
           {
-            text: `Analiza esta imagen de una factura o ticket fiscal venezolano (SENIAT).
-                        Tu tarea es extraer los datos con extrema precisión para un formulario de retención de IVA.
-                        
-                        Extrae la siguiente información en formato JSON estricto:
-                        { 
-                          "isInvoice": boolean (true si la imagen es una factura o ticket fiscal, false de lo contrario),
-                          "invoiceNumber": "Número de Factura", 
-                          "controlNumber": "Número de Control",
-                          "supplierName": "Nombre del proveedor",
-                          "supplierRif": "RIF del proveedor",
-                          "date": "YYYY-MM-DD",
-                          "totalAmount": number,
-                          "taxBase": number,
-                          "taxAmount": number,
-                          "taxRate": number
-                        }
-                        
-                        Reglas adicionales:
-                        1. Si "isInvoice" es false, deja los demás campos como null o vacíos.
-                        2. Si no encuentras un valor específico, usa null o string vacío.
-                        3. Prioriza la exactitud de los montos numéricos.
-                        4. REGLA DE ORO DEL NÚMERO DE CONTROL: Es vital para el SENIAT. Búscalo como 'N° de Control', 'Control No.', o en tickets de máquinas fiscales el código alfanumérico que empieza con 'Z'. Si ves múltiples números, el que tiene prefijo de letras suele ser el de control. No lo confundas con el número de factura.`
+            text: `Eres un experto en fiscalidad venezolana. Extrae los datos de esta imagen.
+            IMPORTANTE: Marcar "isInvoice": true si ves un RIF y montos. Ignora textos de "SIN DERECHO A CRÉDITO FISCAL".
+            
+            DATO CRÍTICO: El NÚMERO DE CONTROL está VERTICAL en el margen derecho (ej: 00-1371586).
+            
+            Extrae este JSON:
+            {
+              "isInvoice": true,
+              "invoiceNumber": string,
+              "controlNumber": string,
+              "supplierName": string,
+              "supplierRif": string,
+              "date": "YYYY-MM-DD",
+              "totalAmount": number,
+              "taxBase": number,
+              "taxAmount": number,
+              "taxRate": 16
+            }`
           }
         ]
-      },
-      config: { responseMimeType: 'application/json' }
+      }]
     });
-    return result.text || '{"isInvoice": false}';
-  } catch (e) {
-    console.error("Error analyzing image:", e);
-    return '{"isInvoice": false, "error": true}';
+
+    console.log("Gemini 2.0 Response:", response.text);
+    return response.text || '{"isInvoice": false}';
+  } catch (e: any) {
+    console.error("Error OCR:", e);
+    return JSON.stringify({ isInvoice: false, error: e.message });
   }
 }
