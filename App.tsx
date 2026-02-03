@@ -814,13 +814,17 @@ const App: React.FC = () => {
             {/* Financial Status iBanKo Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {[
-                { l: 'Total Retenido', v: dashboardStats.totalRetained, i: 'payments', c: 'bg-emerald-50 text-emerald-600' },
-                { l: 'IVA Gestionado', v: dashboardStats.totalIVA, i: 'receipt_long', c: 'bg-indigo-50 text-indigo-600' },
-                { l: 'Proveedores', v: suppliers.length, i: 'person', c: 'bg-orange-50 text-orange-600' },
-                { l: 'Vouchers Gen.', v: generatedVouchers.length, i: 'description', c: 'bg-blue-50 text-blue-600' }
+                { l: 'Total Retenido', v: dashboardStats.totalRetained, i: 'payments', c: 'bg-emerald-50 text-emerald-600', route: AppRoute.REPORTS },
+                { l: 'IVA Gestionado', v: dashboardStats.totalIVA, i: 'receipt_long', c: 'bg-indigo-50 text-indigo-600', route: AppRoute.REPORTS },
+                { l: 'Proveedores', v: suppliers.length, i: 'person', c: 'bg-orange-50 text-orange-600', route: AppRoute.SUPPLIERS },
+                { l: 'Vouchers Gen.', v: generatedVouchers.length, i: 'description', c: 'bg-blue-50 text-blue-600', route: AppRoute.HISTORY }
               ].map((s, idx) => (
-                <div key={idx} className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                  <div className={`w-12 h-12 rounded-2xl ${s.c} flex items-center justify-center mb-6`}>
+                <button
+                  key={idx}
+                  onClick={() => setRoute(s.route)}
+                  className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left cursor-pointer group"
+                >
+                  <div className={`w-12 h-12 rounded-2xl ${s.c} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
                     <span className="material-icons">{s.i}</span>
                   </div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-3">{s.l}</p>
@@ -829,7 +833,7 @@ const App: React.FC = () => {
                     <span className="material-icons text-emerald-500 text-sm">trending_up</span>
                     <span className="text-[10px] font-black text-emerald-500 tracking-tight">10% este mes</span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 
@@ -860,11 +864,20 @@ const App: React.FC = () => {
               <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="font-black text-xl text-slate-900">Proveedores</h3>
-                  <span className="text-[10px] font-black text-blue-600 uppercase cursor-pointer hover:underline">Ver Todos</span>
+                  <button
+                    onClick={() => setRoute(AppRoute.SUPPLIERS)}
+                    className="text-[10px] font-black text-blue-600 uppercase cursor-pointer hover:underline"
+                  >
+                    Ver Todos
+                  </button>
                 </div>
                 <div className="space-y-8">
                   {dashboardStats.topSuppliers.length > 0 ? dashboardStats.topSuppliers.map((s, i) => (
-                    <div key={i} className="flex items-center gap-4 group">
+                    <button
+                      key={i}
+                      onClick={() => setRoute(AppRoute.SUPPLIERS)}
+                      className="flex items-center gap-4 group w-full text-left hover:bg-slate-50 p-2 -m-2 rounded-2xl transition-all"
+                    >
                       <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
                         <span className="material-icons">business</span>
                       </div>
@@ -872,8 +885,8 @@ const App: React.FC = () => {
                         <p className="font-black text-sm text-slate-900 truncate tracking-tight">{s.name}</p>
                         <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Total: Bs {s.total.toLocaleString()}</p>
                       </div>
-                      <span className="material-icons text-slate-200 text-sm">chevron_right</span>
-                    </div>
+                      <span className="material-icons text-slate-200 text-sm group-hover:text-indigo-600 transition-colors">chevron_right</span>
+                    </button>
                   )) : (
                     <div className="text-center py-10">
                       <p className="text-slate-300 font-bold text-xs">Sin transacciones registradas</p>
