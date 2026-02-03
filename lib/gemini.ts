@@ -92,9 +92,24 @@ export const analyzeInvoiceImage = async (base64Image: string): Promise<string> 
           },
           {
             text: `Eres un experto en fiscalidad venezolana. Extrae los datos de esta imagen.
-            IMPORTANTE: Marcar "isInvoice": true si ves un RIF y montos. Ignora textos de "SIN DERECHO A CRÉDITO FISCAL".
             
-            DATO CRÍTICO: El NÚMERO DE CONTROL está VERTICAL en el margen derecho (ej: 00-1371586).
+            ⚠️ REGLAS CRÍTICAS DE ANÁLISIS:
+            
+            1. MONEDA: Solo analiza y extrae valores en BOLÍVARES VENEZOLANOS (VES, Bs, Bs.S, BsF).
+               - Si encuentras montos en dólares ($, USD), euros (€, EUR) u otra moneda, NO los proceses.
+               - Marca "isInvoice": false si la factura no está en bolívares.
+            
+            2. RETENCIÓN: La retención de IVA se calcula ÚNICAMENTE sobre el monto del IVA (taxAmount).
+               - NO sobre el total de la factura (totalAmount).
+               - NO sobre la base imponible (taxBase).
+               - La retención es un porcentaje del IVA según la ley venezolana (75% o 100% del IVA).
+            
+            3. VALIDACIÓN: Marcar "isInvoice": true solo si:
+               - Tiene un RIF válido venezolano (formato: J-12345678-9 o similar)
+               - Tiene montos en bolívares (Bs, VES)
+               - Ignora textos de "SIN DERECHO A CRÉDITO FISCAL"
+            
+            4. NÚMERO DE CONTROL: Está VERTICAL en el margen derecho (ej: 00-1371586).
             
             Extrae este JSON:
             {
@@ -104,10 +119,11 @@ export const analyzeInvoiceImage = async (base64Image: string): Promise<string> 
               "supplierName": string,
               "supplierRif": string,
               "date": "YYYY-MM-DD",
-              "totalAmount": number,
-              "taxBase": number,
-              "taxAmount": number,
-              "taxRate": 16
+              "totalAmount": number (en Bs),
+              "taxBase": number (en Bs),
+              "taxAmount": number (en Bs - ESTE ES EL VALOR BASE PARA LA RETENCIÓN),
+              "taxRate": 16,
+              "currency": "VES"
             }`
           }
         ]
