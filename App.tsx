@@ -10,6 +10,7 @@ import { Company, InvoiceItem, AppRoute, RetentionVoucher as VoucherType, UserPr
 import { analyzeInvoiceImage } from './lib/gemini';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // --- Componentes de Interfaz ---
 
@@ -841,24 +842,102 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
               <div className="lg:col-span-2 bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 relative overflow-hidden group">
                 <div className="flex items-center justify-between mb-10">
-                  <h3 className="font-black text-xl text-slate-900">Registro Financiero</h3>
+                  <h3 className="font-black text-xl text-slate-900">Retenciones Mensuales</h3>
                   <select className="bg-slate-50 border-none text-[10px] font-black uppercase tracking-widest p-2 rounded-xl outline-none cursor-pointer hover:bg-slate-100 transition-colors">
-                    <option>Este Mes</option>
-                    <option>Año 2024</option>
+                    <option>Últimos 6 Meses</option>
+                    <option>Este Año</option>
                   </select>
                 </div>
-                <div className="h-72 flex items-end justify-between gap-6 px-4">
-                  {dashboardStats.chartValues.map((val, idx) => (
-                    <div key={idx} className="flex-1 flex flex-col items-center group/bar relative">
-                      <div className="w-full bg-slate-50 group-hover/bar:bg-indigo-600 rounded-2xl transition-all duration-500 relative min-h-[4px]" style={{ height: `${(val / dashboardStats.maxVal) * 90}%` }}>
-                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-opacity pointer-events-none">
-                          Bs {val.toLocaleString()}
-                        </div>
-                      </div>
-                      <p className="text-[9px] font-black text-slate-300 mt-6 uppercase group-hover/bar:text-slate-900 transition-colors">{dashboardStats.chartLabels[idx]}</p>
-                    </div>
-                  ))}
-                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart
+                    data={(() => {
+                      // Generar datos de los últimos 6 meses basados en vouchers reales
+                      const months = ['Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Ene'];
+                      const now = new Date();
+                      const monthlyData = months.map((month, idx) => {
+                        const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1);
+                        const monthVouchers = generatedVouchers.filter(v => {
+                          const vDate = new Date(v.date);
+                          return vDate.getMonth() === monthDate.getMonth() && vDate.getFullYear() === monthDate.getFullYear();
+                        });
+
+                        const totalRetained = monthVouchers.reduce((sum, v) =>
+                          sum + (v.items?.reduce((acc, i) => acc + (i?.retentionAmount || 0), 0) || 0), 0
+                        );
+                        const totalIVA = monthVouchers.reduce((sum, v) =>
+                          sum + (v.items?.reduce((acc, i) => acc + (i?.taxAmount || 0), 0) || 0), 0
+                        );
+                        const totalBase = monthVouchers.reduce((sum, v) =>
+                          sum + (v.items?.reduce((acc, i) => acc + (i?.taxBase || 0), 0) || 0), 0
+                        );
+
+                        return {
+                          mes: month,
+                          retenido: Math.round(totalRetained),
+                          iva: Math.round(totalIVA),
+                          base: Math.round(totalBase)
+                        };
+                      });
+                      return monthlyData;
+                    })()}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorRetenido" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorIVA" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="mes"
+                      stroke="#94a3b8"
+                      style={{ fontSize: '11px', fontWeight: 'bold' }}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      style={{ fontSize: '10px', fontWeight: 'bold' }}
+                      tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1e293b',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        color: '#fff'
+                      }}
+                      formatter={(value: number) => [`Bs ${value.toLocaleString('es-VE')}`, '']}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }}
+                      iconType="circle"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="retenido"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      fillOpacity={1}
+                      fill="url(#colorRetenido)"
+                      name="Retenido"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="iva"
+                      stroke="#6366f1"
+                      strokeWidth={3}
+                      fillOpacity={1}
+                      fill="url(#colorIVA)"
+                      name="IVA"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
 
               <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
@@ -893,6 +972,143 @@ const App: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Gráficos Adicionales */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+              {/* Gráfico de Barras - Comparativo por Empresa */}
+              <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="font-black text-xl text-slate-900">Retenciones por Empresa</h3>
+                  <span className="material-icons text-slate-300">bar_chart</span>
+                </div>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={(() => {
+                      // Agrupar retenciones por empresa
+                      const companyData = companies.map(company => {
+                        const companyVouchers = generatedVouchers.filter(v => v.company_id === company.id);
+                        const totalRetained = companyVouchers.reduce((sum, v) =>
+                          sum + (v.items?.reduce((acc, i) => acc + (i?.retentionAmount || 0), 0) || 0), 0
+                        );
+                        const totalIVA = companyVouchers.reduce((sum, v) =>
+                          sum + (v.items?.reduce((acc, i) => acc + (i?.taxAmount || 0), 0) || 0), 0
+                        );
+                        return {
+                          empresa: company.name.substring(0, 15) + (company.name.length > 15 ? '...' : ''),
+                          retenido: Math.round(totalRetained),
+                          iva: Math.round(totalIVA),
+                          vouchers: companyVouchers.length
+                        };
+                      }).filter(d => d.vouchers > 0).slice(0, 5);
+                      return companyData.length > 0 ? companyData : [
+                        { empresa: 'Sin datos', retenido: 0, iva: 0, vouchers: 0 }
+                      ];
+                    })()}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="empresa"
+                      stroke="#94a3b8"
+                      style={{ fontSize: '10px', fontWeight: 'bold' }}
+                      angle={-15}
+                      textAnchor="end"
+                      height={60}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      style={{ fontSize: '10px', fontWeight: 'bold' }}
+                      tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1e293b',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        color: '#fff'
+                      }}
+                      formatter={(value: number) => [`Bs ${value.toLocaleString('es-VE')}`, '']}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }}
+                      iconType="circle"
+                    />
+                    <Bar dataKey="retenido" fill="#10b981" radius={[8, 8, 0, 0]} name="Retenido" />
+                    <Bar dataKey="iva" fill="#6366f1" radius={[8, 8, 0, 0]} name="IVA" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Gráfico Circular - Distribución por Proveedor */}
+              <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="font-black text-xl text-slate-900">Top Proveedores</h3>
+                  <span className="material-icons text-slate-300">pie_chart</span>
+                </div>
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie
+                      data={(() => {
+                        const COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6'];
+                        const supplierData = suppliers.map(supplier => {
+                          const supplierVouchers = generatedVouchers.filter(v => v.supplier_id === supplier.id);
+                          const totalRetained = supplierVouchers.reduce((sum, v) =>
+                            sum + (v.items?.reduce((acc, i) => acc + (i?.retentionAmount || 0), 0) || 0), 0
+                          );
+                          return {
+                            name: supplier.name.substring(0, 20) + (supplier.name.length > 20 ? '...' : ''),
+                            value: Math.round(totalRetained),
+                            vouchers: supplierVouchers.length
+                          };
+                        }).filter(d => d.value > 0)
+                          .sort((a, b) => b.value - a.value)
+                          .slice(0, 5);
+
+                        return supplierData.length > 0 ? supplierData.map((item, index) => ({
+                          ...item,
+                          fill: COLORS[index % COLORS.length]
+                        })) : [
+                          { name: 'Sin datos', value: 1, fill: '#e2e8f0' }
+                        ];
+                      })()}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                      outerRadius={90}
+                      dataKey="value"
+                    >
+                      {(() => {
+                        const COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6'];
+                        return suppliers.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ));
+                      })()}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1e293b',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        color: '#fff'
+                      }}
+                      formatter={(value: number) => [`Bs ${value.toLocaleString('es-VE')}`, 'Retenido']}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }}
+                      iconType="circle"
+                      layout="vertical"
+                      align="right"
+                      verticalAlign="middle"
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
